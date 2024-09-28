@@ -90,11 +90,7 @@ M.show_marks = function()
    if not index[cword] then
       return
    end
-   ui.show_popup(index[cword])
-end
-
-M.popup = function()
-   ui.show_popup()
+   ui.show(index[cword])
 end
 
 M.setup = function()
