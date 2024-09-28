@@ -2,7 +2,9 @@ local async = require('plenary.async')
 -- local await = async.await
 -- local Job = require('plenary.job')
 
-local M = {}
+local M = {
+   context_lines = 1,
+}
 -- Saves data to json file
 --
 -- @param filename: string (path to file)
@@ -55,7 +57,14 @@ function M:index_files(path, extensions)
             if s then
                local hashtag = line:sub(s, e)
                self.data[hashtag] = self.data[hashtag] or {}
-               table.insert(self.data[hashtag], {file = filename, line = line, from = s, to = e, row = row})
+               local ctx_lines = {}
+               for i = row-self.context_lines, row+self.context_lines do
+                  if i < 1 or i > #lines then
+                     table.insert(ctx_lines, '')
+                  end
+                  table.insert(ctx_lines, lines[i])
+               end
+               table.insert(self.data[hashtag], {file = filename, lines = ctx_lines, from = s, to = e, row = row})
             end
          end
       end
