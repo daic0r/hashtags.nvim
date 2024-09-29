@@ -2,7 +2,8 @@ local M = {
    bufnr = nil,
    win_id = nil,
    entry_size = 4,
-   data = nil
+   data = nil,
+   cur_entry = nil,
 }
 
 M.new = function(bufnr, win_id, data)
@@ -10,6 +11,7 @@ M.new = function(bufnr, win_id, data)
    tbl.bufnr = bufnr
    tbl.win_id = win_id
    tbl.data = data
+   tbl.cur_entry = -1
    setmetatable(tbl, { __index = M })
    return tbl
 end
@@ -20,8 +22,6 @@ local ENTRY_HEIGHT = 2
 local HASHTAGS_HIGHLIGHT_NS = vim.api.nvim_create_namespace('hashtags')
 local HASHTAGS_MENU_HIGHLIGHT = 'HashtagsMenu'
 local HASHTAGS_MENU_FILENAME = 'HashtagsMenuFilename'
-
-local cur_entry = -1
 
 vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_HIGHLIGHT, {  fg = "#ffffff", bg = "#005f87", bold = true })
 vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_FILENAME, {  fg = "green", bg = "#005f87", bold = true })
@@ -53,16 +53,16 @@ end
 
 function M:next_entry(dir)
    local lines = vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
-   cur_entry = (cur_entry + dir) % (#lines / self.entry_size)
+   self.cur_entry = (self.cur_entry + dir) % (#lines / self.entry_size)
    vim.api.nvim_buf_clear_highlight(self.bufnr, HASHTAGS_HIGHLIGHT_NS, 0, -1)
    for i = 0, self.entry_size-1 do
-      self:highlight_buf_line(cur_entry * self.entry_size + i)
+      self:highlight_buf_line(self.cur_entry * self.entry_size + i)
    end
-   vim.api.nvim_win_set_cursor(self.win_id, {cur_entry * self.entry_size + 1, 0})
+   vim.api.nvim_win_set_cursor(self.win_id, {self.cur_entry * self.entry_size + 1, 0})
 end
 
 function M:do_nav()
-   local entry = self.data[cur_entry + 1]
+   local entry = self.data[self.cur_entry + 1]
    local file = entry.file
    local cursor_pos = { entry.row, entry.from }
    vim.api.nvim_win_close(self.win_id, true)
