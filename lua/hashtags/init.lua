@@ -1,49 +1,10 @@
 local M = {}
 
--- M.setup = function()
---    vim.schedule(function()
---       local k = vim.fs.find(function(name, path)
---          return name:match('%.lua$')
---       end, { limit = math.huge, type = 'file', path = '/home/ic0r/programming/neovim/plugins'})
---       
---       for _, filename in ipairs(k) do
---          local f = io.open(filename, "r")
---          local content = f:read("*a")
---          print(content)
---       end
---    end)
--- end
-
-local data = {}
-
-      -- local k = vim.fs.find(function(name, path)
-      --    return name:match('%.lua$')
-      -- end, { limit = math.huge, type = 'file', path = '/home/ic0r/programming/neovim/plugins'})
-      -- 
-      -- for _, filename in ipairs(k) do
-      --    local f = io.open(filename, "r")
-      --    local content = f:read("*a")
-      --    local idx = 1
-      --    for line in content:gmatch("[^\r\n]+") do
-      --       local b, e = line:find("#[%u_]+")
-      --       if b then
-      --          local hashtag = line:sub(b, e)
-      --          data[hashtag] = data[hashtag] or {}
-      --          data[hashtag][filename] = data[hashtag][filename] or {}
-      --          table.insert(data[hashtag][filename], {line = idx, from = b, to = e})
-      --       end
-      --       idx = idx + 1
-      --    end
-      -- end
-
-      -- print(P(data))
+local utils = require('hashtags.utils')
+local ui = require('hashtags.ui')
 
 -- #BRUHfafjsdjf
 -- #HERE
-
-local utils = require('hashtags.utils')
-local ui = require('hashtags.ui')
-utils:index_files('/home/ic0r/programming/neovim/plugins', {'.lua'})
 
 M.nav_next = function()
    local index = utils.data
@@ -94,6 +55,7 @@ M.show_marks = function()
 end
 
 M.setup = function()
+   utils.init()
 end
 
 package.loaded['hashtags.utils'] = nil
