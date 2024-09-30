@@ -1,10 +1,21 @@
+--- UI module for hashtags.nvim
+--- @class UI
+--- @field bufnr number|nil
+--- @field win_id number|nil
+--- @field data table|nil
+--- @field cur_entry number|nil
+--- @field options Options|nil
 local M = {
    bufnr = nil,
    win_id = nil,
    entry_size = 4,
    data = nil,
    cur_entry = nil,
+   options = nil,
 }
+
+M.setup = function(opts)
+end
 
 M.new = function(bufnr, win_id, data)
    local tbl = {}

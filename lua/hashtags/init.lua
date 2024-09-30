@@ -1,13 +1,14 @@
 local M = {}
 
-local utils = require('hashtags.utils')
+local internal = require('hashtags.internal')
 local ui = require('hashtags.ui')
+local default_options = require('hashtags.options')
 
 -- #BRUHfafjsdjf
 -- #HERE
 
 M.nav_next = function()
-   local index = utils.data
+   local index = internal.data
    local cword = vim.fn.expand('<cWORD>')
    cword = cword:match('#[%u_]+')
    if not index[cword] then
@@ -45,7 +46,7 @@ M.nav_next = function()
 end
 
 M.show_marks = function()
-   local index = utils.data
+   local index = internal.data
    local cword = vim.fn.expand('<cWORD>')
    cword = cword:match('#[%u_]+')
    if not index[cword] then
@@ -54,11 +55,18 @@ M.show_marks = function()
    ui.show(index[cword])
 end
 
-M.setup = function()
-   utils.init()
+
+--- Setup the plugin
+--- @param opts table Options that you want to override
+M.setup = function(opts)
+   local options = default_options
+   if opts then
+      options = vim.tbl_deep_extend("force", options, opts)
+   end
+   internal.init(opts)
 end
 
-package.loaded['hashtags.utils'] = nil
+package.loaded['hashtags.internal'] = nil
 package.loaded['hashtags.ui'] = nil
 package.loaded['hashtags'] = nil
 

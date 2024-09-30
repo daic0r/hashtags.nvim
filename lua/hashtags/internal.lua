@@ -1,54 +1,37 @@
 local async = require('plenary.async')
+local util = require('hashtags.util')
 -- local await = async.await
 -- local Job = require('plenary.job')
 
+--- @class Internal
+--- @field options Options|nil
+--- @field root string|nil
+--- @field data table|nil
 local M = {
-   context_lines = 1,
-   root = nil
+   options = nil,
+   root = nil,
+   data = nil,
 }
 
-M.init = function()
+--- Initialize the internals
+---
+--- This function will try to find the root directory of the project and load the index file
+--- @param opts Options
+M.init = function(opts)
    M.root = M.find_root_dir(vim.fn.getcwd())
    if not M.root then
       return
    end
-   M.data = M.load_from_json(M.get_index_file())
+   M.options = opts
+   M.data = util.load_from_json(M.get_index_file())
    if not M.data then
       M.index_files(M.root, M.load_project_config().extensions)
    end
 end
 
---- Saves data to json file
----
---- @param filename string (path to file)
---- @param args table (data to be stored in the json)
---- @return boolean
-local function save_to_json(filename, args)
-   local f = io.open(filename, "w")
-   if not f then
-      return false
-   end
-   local json = vim.json.encode(args)
-   f:write(json)
-   f:close()
-   return true
-end
-
-M.load_from_json = function(filename)
-   local f = io.open(filename, "r")
-   if not f then
-      return nil
-   end
-   local data = {}
-   local content = f:read("*a")
-   f:close()
-   _, data = pcall(vim.json.decode, content, { object = true, array = true })
-   assert(data, "Could not decode json")
-   return data
-end
 
 --- Get the path to the file containing the index of hashtags
---- @return string
+--- @return string Options that you want to override
 M.get_index_file = function()
    return vim.fs.joinpath(M.root, '.hashtags.index.json')
 end
@@ -69,14 +52,14 @@ end
 M.load_project_config = function()
    local config_file = vim.fs.joinpath(M.root, '/.hashtags.json')
    local config = {}
-   config = M.load_from_json(config_file) or { extensions = {} }
+   config = util.load_from_json(config_file) or { extensions = {} }
    return config
 end
 
 --- Index files in a directory
 --- @param path string
 --- @param extensions table
---- @return table
+--- @return table The indexed data
 function M.index_files(path, extensions)
    print("Extensions " .. vim.inspect(extensions))
    return async.run(function()
@@ -85,7 +68,6 @@ function M.index_files(path, extensions)
       local files = vim.fs.find(function(name)
          return vim.tbl_contains(extensions, name:match('.+%.(%w+)$'))
       end, { limit = math.huge, type = 'file', path = path})
-      
 
       for _, filename in ipairs(files) do
          local f = io.open(filename, "r")
@@ -101,7 +83,7 @@ function M.index_files(path, extensions)
                local hashtag = line:sub(s, e)
                M.data[hashtag] = M.data[hashtag] or {}
                local ctx_lines = {}
-               for i = row-M.context_lines, row+M.context_lines do
+               for i = row-M.options.context, row+M.options.context do
                   if i < 1 or i > #lines then
                      table.insert(ctx_lines, '')
                   end
@@ -114,7 +96,7 @@ function M.index_files(path, extensions)
           ::continue::
       end
 
-      save_to_json(M.get_index_file(), M.data)
+      util.save_to_json(M.get_index_file(), M.data)
    end,
    function(data)
    end
