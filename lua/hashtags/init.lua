@@ -63,11 +63,8 @@ M.setup = function(opts)
    if opts then
       options = vim.tbl_deep_extend("force", options, opts)
    end
-   internal.init(opts)
+   ui.init(options)
+   internal.init(options)
 end
-
-package.loaded['hashtags.internal'] = nil
-package.loaded['hashtags.ui'] = nil
-package.loaded['hashtags'] = nil
 
 return M

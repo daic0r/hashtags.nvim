@@ -1,20 +1,36 @@
+local popup = require("plenary.popup")
+
+local HASHTAGS_HIGHLIGHT_NS = vim.api.nvim_create_namespace('daic0r.hashtags')
+local HASHTAGS_MENU_HIGHLIGHT = 'HashtagsMenu'
+local HASHTAGS_MENU_FILENAME = 'HashtagsMenuFilename'
+local HASHTAGS_MENU_LINENUMBER = 'HashtagsMenuLineNumber'
+local HASHTAGS_MENU_CONTEXT = 'HashtagsMenuContext'
+
 --- UI module for hashtags.nvim
 --- @class UI
---- @field bufnr number|nil
---- @field win_id number|nil
---- @field data table|nil
---- @field cur_entry number|nil
---- @field options Options|nil
+--- @field bufnr number
+--- @field win_id number
+--- @field data table
+--- @field cur_entry number
+--- @field options Options
+--- @field entry_size number
 local M = {
-   bufnr = nil,
-   win_id = nil,
-   entry_size = 4,
-   data = nil,
-   cur_entry = nil,
-   options = nil,
 }
 
-M.setup = function(opts)
+M.init = function(opts)
+   M.options = opts
+   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
+      HASHTAGS_MENU_HIGHLIGHT,
+      opts.ui.theme.menu_highlight)
+   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
+      HASHTAGS_MENU_FILENAME,
+      opts.ui.theme.menu_filename)
+   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
+      HASHTAGS_MENU_LINENUMBER,
+      opts.ui.theme.menu_linenumber)
+   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
+      HASHTAGS_MENU_CONTEXT,
+      opts.ui.theme.menu_context)
 end
 
 M.new = function(bufnr, win_id, data)
@@ -23,19 +39,13 @@ M.new = function(bufnr, win_id, data)
    tbl.win_id = win_id
    tbl.data = data
    tbl.cur_entry = -1
+
+   -- context lines above, context lines below + the line itself + the header
+   tbl.entry_size = (M.options.context * 2 + 1) + 1
+
    setmetatable(tbl, { __index = M })
    return tbl
 end
-
-local popup = require("plenary.popup")
-
-local ENTRY_HEIGHT = 2
-local HASHTAGS_HIGHLIGHT_NS = vim.api.nvim_create_namespace('hashtags')
-local HASHTAGS_MENU_HIGHLIGHT = 'HashtagsMenu'
-local HASHTAGS_MENU_FILENAME = 'HashtagsMenuFilename'
-
-vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_HIGHLIGHT, {  fg = "#ffffff", bg = "#005f87", bold = true })
-vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_FILENAME, {  fg = "green", bg = "#005f87", bold = true })
 
 function M:add_entry(entry)
    local line1 = string.format("%s:%d", entry.file, entry.row, entry.line)
@@ -82,24 +92,19 @@ function M:do_nav()
 end
 
 M.show = function(data)
-   local width = 90
-   local height = 20
-   local borderchars = { "─", "│", "─", "│", "╭", "╮", "╯", "╰" }
    local opts = {
       title = "Hashtags",
-      line = math.floor((vim.o.lines - height) / 2),
-      col = math.floor((vim.o.columns - width) / 2),
-      minwidth = width,
-      minheight = height,
-      border = true,
+      line = math.floor((vim.o.lines - M.options.ui.height) / 2),
+      col = math.floor((vim.o.columns - M.options.ui.width) / 2),
+      minwidth = M.options.ui.width,
+      minheight = M.options.ui.height,
+      border = M.options.ui.border,
       padding = { 0, 0, 1, 1 },
-      borderchars = borderchars,
+      borderchars = M.options.ui.borderchars,
    }
-   print(opts.col)
 
    local win_id = popup.create({}, opts)
    vim.api.nvim_win_set_hl_ns(win_id, HASHTAGS_HIGHLIGHT_NS)
-
    vim.api.nvim_win_set_option(win_id, "number", false)
 
    local bufnr = vim.api.nvim_win_get_buf(win_id)
@@ -118,6 +123,8 @@ M.show = function(data)
    end
 
    this:next_entry(1)
+
+   vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
 end
 
 return M
