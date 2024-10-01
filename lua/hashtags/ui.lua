@@ -1,10 +1,5 @@
 local popup = require("plenary.popup")
-
-local HASHTAGS_HIGHLIGHT_NS = vim.api.nvim_create_namespace('daic0r.hashtags')
-local HASHTAGS_MENU_HIGHLIGHT = 'HashtagsMenu'
-local HASHTAGS_MENU_FILENAME = 'HashtagsMenuFilename'
-local HASHTAGS_MENU_LINENUMBER = 'HashtagsMenuLineNumber'
-local HASHTAGS_MENU_CONTEXT = 'HashtagsMenuContext'
+local globals = require("hashtags.globals")
 
 --- UI module for hashtags.nvim
 --- @class UI
@@ -19,17 +14,17 @@ local M = {
 
 M.init = function(opts)
    M.options = opts
-   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
-      HASHTAGS_MENU_HIGHLIGHT,
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_HIGHLIGHT,
       opts.ui.theme.menu_highlight)
-   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
-      HASHTAGS_MENU_FILENAME,
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_FILENAME,
       opts.ui.theme.menu_filename)
-   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
-      HASHTAGS_MENU_LINENUMBER,
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_LINENUMBER,
       opts.ui.theme.menu_linenumber)
-   vim.api.nvim_set_hl(HASHTAGS_HIGHLIGHT_NS,
-      HASHTAGS_MENU_CONTEXT,
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_CONTEXT,
       opts.ui.theme.menu_context)
 end
 
@@ -66,8 +61,9 @@ function M:highlight_buf_line(line)
 
    local line_text = line_array[1]
    local virt_text = line_text .. string.rep(' ', vim.api.nvim_win_get_width(self.win_id) - #line_text)
-   vim.api.nvim_buf_set_extmark(self.bufnr, HASHTAGS_HIGHLIGHT_NS, line, 0, {
-       virt_text = { { virt_text, HASHTAGS_MENU_HIGHLIGHT } },
+   --vim.api.nvim_buf_add_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_HIGHLIGHT, line, 0, #line_text)
+   vim.api.nvim_buf_set_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, line, 0, {
+       virt_text = { { virt_text, globals.HASHTAGS_MENU_HIGHLIGHT } },
        virt_text_pos = 'overlay',  -- Make the virtual text overlay the line
     })
 end
@@ -75,7 +71,7 @@ end
 function M:next_entry(dir)
    local lines = vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
    self.cur_entry = (self.cur_entry + dir) % (#lines / self.entry_size)
-   vim.api.nvim_buf_clear_highlight(self.bufnr, HASHTAGS_HIGHLIGHT_NS, 0, -1)
+   vim.api.nvim_buf_clear_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
    for i = 0, self.entry_size-1 do
       self:highlight_buf_line(self.cur_entry * self.entry_size + i)
    end
@@ -104,7 +100,7 @@ M.show = function(data)
    }
 
    local win_id = popup.create({}, opts)
-   vim.api.nvim_win_set_hl_ns(win_id, HASHTAGS_HIGHLIGHT_NS)
+   vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
    vim.api.nvim_win_set_option(win_id, "number", false)
 
    local bufnr = vim.api.nvim_win_get_buf(win_id)
