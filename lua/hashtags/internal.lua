@@ -8,10 +8,12 @@ local shown = false
 
 --- @class DataEntry
 --- @field file string File that contains the hashtag
+--- @field mark_id number
 --- @field lines table Context around the line containing the hashtag
 --- @field from number Start column of the hashtag
 --- @field to number End column of the hashtag
 --- @field row number Line number of the hashtag
+--- @field lastModifiedTime number
 
 --- @class DataEntry2
 --- @field hashtag string
@@ -24,6 +26,7 @@ local shown = false
 --- @class DataByFileEntry
 --- @field hashtags DataEntry2[]
 --- @field next_extmark_id number
+--- @field lastModifiedTime number
 
 --- @class EventArgs
 --- @field buf number
@@ -154,6 +157,43 @@ M.load_project_config = function()
    return config
 end
 
+--- Index a file's hashtags
+--- @param path string
+--- @param filename string
+M.index_file = function(path, filename)
+   local tags = {}
+
+   local f = io.open(filename, "r")
+   if not f then
+      return nil
+   end
+   local stat = vim.loop.fs_stat(filename)
+   local content = f:read("*a")
+   f:close()
+   local lines = vim.split(content, '\n')
+
+   filename = filename:sub(#path + 2) -- remove the root path including the slash
+   for row, line in ipairs(lines) do
+      local s, e = line:find('#[%u_]+')
+      if s then
+         local hashtag = line:sub(s, e)
+         local ctx_lines = {}
+         tags[hashtag] = tags[hashtag] or {}
+         for i = row-M.options.context, row+M.options.context do
+            if i < 1 or i > #lines then
+               table.insert(ctx_lines, '')
+            end
+            table.insert(ctx_lines, lines[i])
+         end
+         table.insert(tags[hashtag],
+            {file = filename, lines = ctx_lines, from = s, to = e,
+               row = row, mark_id = nil, lastModifiedTime = stat.mtime.nsec })
+      end
+   end
+
+   return filename, tags
+end
+
 --- Index files in a directory
 --- @param path string
 --- @param extensions table
@@ -172,35 +212,34 @@ function M.index_files(path, extensions)
       end, { limit = math.huge, type = 'file', path = path})
 
       for _, filename in ipairs(files) do
-         local f = io.open(filename, "r")
-         if not f then
-            goto continue
-         end
-         local content = f:read("*a")
-         f:close()
-         local lines = vim.split(content, '\n')
-         for row, line in ipairs(lines) do
-            local s, e = line:find('#[%u_]+')
-            if s then
-               local hashtag = line:sub(s, e)
-               M.data[hashtag] = M.data[hashtag] or {}
-               local ctx_lines = {}
-               for i = row-M.options.context, row+M.options.context do
-                  if i < 1 or i > #lines then
-                     table.insert(ctx_lines, '')
-                  end
-                  table.insert(ctx_lines, lines[i])
+         local stat = vim.loop.fs_stat(filename)
+
+         local truncated_filename, tags = M.index_file(path, filename)
+
+         if truncated_filename then
+            for tag,entry_array in pairs(tags) do
+               M.data[tag] = M.data[tag] or {}
+               for _, entry in ipairs(entry_array) do
+                  table.insert(M.data[tag], entry)
                end
-               filename = filename:sub(#path + 2) -- remove the root path including the slash
-               M.data_by_file[filename] = M.data_by_file[filename] or {
-                  hashtags = {},
-                  next_extmark_id = 0
-               }
-               table.insert(M.data[hashtag], {file = filename, lines = ctx_lines, from = s, to = e, row = row})
-               table.insert(M.data_by_file[filename].hashtags, {hashtag = hashtag, row = row, from = s, to = e, lines = ctx_lines, mark_id = nil })
+            end
+
+            M.data_by_file[truncated_filename] =
+               M.data_by_file[truncated_filename] or
+                  { hashtags = {}, next_extmark_id = 0, lastModifiedTime = stat.mtime.nsec }
+            for tag,entry_array in pairs(tags) do
+               for _, entry in ipairs(entry_array) do
+                  table.insert(M.data_by_file[truncated_filename].hashtags, {
+                     hashtag = tag,
+                     row = entry.row,
+                     from = entry.from,
+                     to = entry.to,
+                     lines = entry.lines,
+                     mark_id = nil
+                  })
+               end
             end
          end
-          ::continue::
       end
 
       util.save_to_json(M.get_index_file(), M.data, M.data_by_file)
