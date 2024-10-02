@@ -8,6 +8,7 @@ local shown = false
 
 --- @class DataEntry
 --- @field file string File that contains the hashtag
+--- @field bufnr number|nil Buffer number of the file
 --- @field mark_id number
 --- @field lines table Context around the line containing the hashtag
 --- @field from number Start column of the hashtag
@@ -27,6 +28,7 @@ local shown = false
 --- @field hashtags DataEntry2[]
 --- @field next_extmark_id number
 --- @field lastModifiedTime number
+--- @field bufnr number
 
 --- @class EventArgs
 --- @field buf number
@@ -46,9 +48,54 @@ local M = {
 
    --- @type table<string, DataEntry[]>
    data = nil,
-   --- @type table<string, DataByFileEntry[]>
+   --- @type table<string, DataByFileEntry>
    data_by_file = nil,
 }
+
+--- @type table<number, uv_timer_t>
+local buffer_timers = {}
+
+--- Parse a line for a hashtag
+--- @param line string # Line to parse
+--- @return table[] Array of hashtags and their positions
+local function parse_line(line)
+   local ret = {}
+   for hashtag in line:gmatch('#[%u_]+') do
+      table.insert(ret, { hashtag = hashtag, from = line:find(hashtag) })
+   end
+   return ret
+end
+
+--- Check if index has a particular hashtag instance
+--- @param hashtag_index table Array of hashtag instances for this particular hashtag (shoul be M.data[hashtag])
+--- @param hashtag_instance table Hashtag instance to check for
+local function has_buffer_hashtag_instance(hashtag_index, hashtag_instance)
+   if not hashtag_index then
+      return false
+   end
+   for _, hashtag in ipairs(hashtag_index) do
+      if hashtag_instance.row == hashtag.row and
+         hashtag_instance.from == hashtag.from then
+         return true
+      end
+   end
+   return false
+end
+
+--- Get the context lines around a row
+--- @param lines table Array of lines
+--- @param row number Row to get context around
+--- @param context number Number of lines to get around the row
+local function get_context_lines(lines, row, context)
+   local ctx_lines = {}
+   for i = row-context, row+context do
+      if i < 1 or i > #lines then
+         table.insert(ctx_lines, '')
+      end
+      table.insert(ctx_lines, lines[i])
+   end
+   return ctx_lines
+end
 
 --- Initialize the init_autocommands
 --- @param extensions table Array of file extensions
@@ -56,6 +103,8 @@ local function init_autocommands(extensions)
    local augroup = vim.api.nvim_create_augroup('DAIC0R_HASHTAGS', { 
       clear = true
    })
+   -- #TODO: new file is created, add it to the index
+   -- #TODO: file is being edited, check for new hashtags
    vim.api.nvim_create_autocmd({'BufReadPost'}, {
       group = augroup,
       --- @type fun(ev: EventArgs)
@@ -71,24 +120,44 @@ local function init_autocommands(extensions)
             return
          end
          local file_entry = M.data_by_file[ev.file]
+         file_entry.bufnr = ev.buf
          for _, hashtag in ipairs(file_entry.hashtags) do
             local mark_id = vim.api.nvim_buf_set_extmark(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, hashtag.row-1, hashtag.from-1, {
-               virt_text = {{hashtag.hashtag, globals.HASHTAGS_MENU_HIGHLIGHT}},
+               virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
                virt_text_pos = 'overlay',
                hl_mode = 'replace'
             })
             hashtag.mark_id = mark_id
             file_entry.next_extmark_id = file_entry.next_extmark_id + 1
+
+            -- Sync with other map
+            local hashtag_entry = vim.tbl_filter(function(entry)
+               return entry.file == ev.file and entry.row == hashtag.row and entry.from == hashtag.from
+            end, M.data[hashtag.hashtag])
+            if #hashtag_entry == 1 then
+               hashtag_entry[1].mark_id = mark_id
+               hashtag_entry[1].bufnr = ev.buf
+            end
          end
+         print(vim.inspect(file_entry))
       end
    })
-   vim.api.nvim_create_autocmd({'TextChanged'}, {
+   vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {
       group = augroup,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
+         local buf_timer = buffer_timers[ev.buf]
+         if not buf_timer then
+            buffer_timers[ev.buf] = vim.loop.new_timer()
+            buf_timer = buffer_timers[ev.buf]
+         end
+         if buf_timer:is_active() then
+            buf_timer:stop()
+         end
          -- For some reason here the absolute path is used,
          -- whereas above it isn't
          ev.file = ev.file:sub(#M.root + 2)
+         --- @type DataByFileEntry
          local file_entry = M.data_by_file[ev.file]
          if not file_entry then
             return
@@ -104,6 +173,54 @@ local function init_autocommands(extensions)
                hashtag.from = ext_mark_item[2] + 1
             end
          end
+
+         buf_timer:start(3000, 0, vim.schedule_wrap(function()
+            local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
+
+            -- Iterate over buffer lines
+            for row,line in ipairs(lines) do
+               local hashtags = parse_line(line)
+               -- Iterate over line hashtags
+               for _, entry in ipairs(hashtags) do
+                  -- If we do not have this particular instance of the hashtag yet,
+                  -- add it to the index
+                  entry.row = row
+
+                  -- Get only the entries in the index for this hashtags that
+                  -- pertain to the current buffer
+                  local pertaining_hashtags = vim.tbl_filter(function(hashtag)
+                     return hashtag.file == ev.file or hashtag.bufnr == ev.buf
+                  end, M.data[entry.hashtag])
+                  if not has_buffer_hashtag_instance(pertaining_hashtags, entry) then
+                     -- nvim_buf_set_extmark takes 0-based row and column
+                     local mark_id = vim.api.nvim_buf_set_extmark(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, row-1, entry.from-1, {
+                        virt_text = {{entry.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
+                        virt_text_pos = 'overlay',
+                        hl_mode = 'replace'
+                     })
+                     table.insert(file_entry.hashtags, {
+                        hashtag = entry.hashtag,
+                        row = row,
+                        from = entry.from,
+                        to = entry.from + #entry.hashtag,
+                        lines = get_context_lines(lines, row, M.options.context),
+                        mark_id = mark_id
+                     })
+                     M.data[entry.hashtag] = M.data[entry.hashtag] or {}
+                     table.insert(M.data[entry.hashtag], {
+                        file = ev.file,
+                        bufnr = ev.buf,
+                        mark_id = mark_id,
+                        lines = get_context_lines(lines, row, M.options.context),
+                        from = entry.from,
+                        to = entry.from + #entry.hashtag,
+                        row = row,
+                        lastModifiedTime = nil,
+                     })
+                  end
+               end
+            end
+         end))
       end
    })
 end
@@ -124,9 +241,7 @@ M.init = function(opts)
       M.data_by_file = data[2]
    end
    local config = M.load_project_config()
-   if not M.data then
-      M.index_files(M.root, config.extensions)
-   end
+   M.index_files(M.root, config.extensions)
    init_autocommands(config.extensions)
 end
 
@@ -155,6 +270,14 @@ M.load_project_config = function()
    local config = {}
    config = util.load_from_json(config_file) or { extensions = {} }
    return config
+end
+
+--- Truncate the file path by removing the root
+--- @param root string
+--- @param filepath string
+--- @return string
+local function truncate_file_path(root, filepath)
+   return filepath:sub(#root + 2)
 end
 
 --- Index a file's hashtags
@@ -200,8 +323,8 @@ end
 --- @return table The indexed data
 function M.index_files(path, extensions)
    return async.run(function()
-      M.data = {}
-      M.data_by_file = {}
+      M.data = M.data or {}
+      M.data_by_file = M.data_by_file or {}
 
       local files = vim.fs.find(function(name, path)
          -- #TODO make items ignorable
@@ -213,19 +336,34 @@ function M.index_files(path, extensions)
 
       for _, filename in ipairs(files) do
          local stat = vim.loop.fs_stat(filename)
+         if not stat then
+            goto continue
+         end
+         local file_entry = M.data_by_file[truncate_file_path(path, filename)]
+         if file_entry and file_entry.lastModifiedTime == stat.mtime.nsec then
+            goto continue
+         elseif file_entry then
+            print("File has been modified, reindexing: " .. filename)
+         end
 
+         --- Get information from this single file...
          local truncated_filename, tags = M.index_file(path, filename)
 
+         --- ...and merge it into the big data structure
          if truncated_filename then
             for tag,entry_array in pairs(tags) do
                M.data[tag] = M.data[tag] or {}
+               -- Remove stale, old entries
+               vim.tbl_filter(function(entry)
+                  return entry.file ~= truncated_filename
+               end, M.data[tag])
+
                for _, entry in ipairs(entry_array) do
                   table.insert(M.data[tag], entry)
                end
             end
 
             M.data_by_file[truncated_filename] =
-               M.data_by_file[truncated_filename] or
                   { hashtags = {}, next_extmark_id = 0, lastModifiedTime = stat.mtime.nsec }
             for tag,entry_array in pairs(tags) do
                for _, entry in ipairs(entry_array) do
@@ -240,11 +378,13 @@ function M.index_files(path, extensions)
                end
             end
          end
+          ::continue::
       end
 
-      util.save_to_json(M.get_index_file(), M.data, M.data_by_file)
+      return M.data, M.data_by_file
    end,
-   function(data)
+   function(data, data_by_file)
+      util.save_to_json(M.get_index_file(), data, data_by_file)
    end
    )
 end

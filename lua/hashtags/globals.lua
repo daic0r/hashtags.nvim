@@ -5,5 +5,6 @@ M.HASHTAGS_MENU_HIGHLIGHT = 'HashtagsMenu'
 M.HASHTAGS_MENU_FILENAME = 'HashtagsMenuFilename'
 M.HASHTAGS_MENU_LINENUMBER = 'HashtagsMenuLineNumber'
 M.HASHTAGS_MENU_CONTEXT = 'HashtagsMenuContext'
+M.HASHTAGS_BUFFER_MARKER = 'HashtagsBufferMarker'
 
 return M

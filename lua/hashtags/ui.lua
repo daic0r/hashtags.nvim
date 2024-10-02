@@ -26,6 +26,9 @@ M.init = function(opts)
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_CONTEXT,
       opts.ui.theme.menu_context)
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_BUFFER_MARKER,
+      opts.ui.theme.buffer_marker)
 end
 
 M.new = function(bufnr, win_id, data)
@@ -43,7 +46,8 @@ M.new = function(bufnr, win_id, data)
 end
 
 function M:add_entry(entry)
-   local line1 = string.format("%s:%d", entry.file, entry.row, entry.line)
+   local filename = entry.file or vim.api.nvim_buf_get_name(entry.bufnr)
+   local line1 = string.format("%s:%d", filename, entry.row, entry.line)
    local start = -1
    -- Account for initial empty line in buffer and overwrite it
    if #vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false) == 1 then
@@ -83,7 +87,12 @@ function M:do_nav()
    local file = entry.file
    local cursor_pos = { entry.row, entry.from }
    vim.api.nvim_win_close(self.win_id, true)
-   vim.api.nvim_command('e ' .. file)
+   print(entry.bufnr)
+   if entry.bufnr then
+      vim.api.nvim_set_current_buf(entry.bufnr)
+   elseif file then
+      vim.api.nvim_command('e ' .. file)
+   end
    vim.api.nvim_win_set_cursor(0, cursor_pos)
 end
 
@@ -108,6 +117,7 @@ M.show = function(data)
    local this = M.new(bufnr, win_id, data)
 
    vim.keymap.set('n', 'q', ':q<CR>', { buffer = bufnr, noremap = true, silent = true })
+   vim.keymap.set('n', '<Esc>', ':q<CR>', { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', 'j', function() this:next_entry(1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', 'k', function() this:next_entry(-1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', '<CR>', function() this:do_nav() end, { buffer = bufnr, noremap = true, silent = true })

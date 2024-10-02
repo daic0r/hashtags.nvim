@@ -25,11 +25,12 @@ M = {
       borderchars = { "─", "│", "─", "│", "╭", "╮", "╯", "╰" },
       border = true,
       theme = {
-         menu_highlight = { fg = 'White', bg = 'Blue' },
-         menu_selected_highlight = { fg = 'Blue', bg = 'White' },
-         menu_filename = { fg = 'Yellow', bg = 'Blue' },
-         menu_linenumber = { fg = 'Green', bg = 'Blue' },
-         menu_context = { fg = 'Grey', bg = 'Blue' },
+         menu_highlight = { fg = 'white', bg = 'blue' },
+         menu_selected_highlight = { fg = 'blue', bg = 'white' },
+         menu_filename = { fg = 'yellow', bg = 'blue' },
+         menu_linenumber = { fg = 'green', bg = 'blue' },
+         menu_context = { fg = 'grey', bg = 'blue' },
+         buffer_marker = { fg = 'red', bg = 'blue' },
       },
    },
 }
