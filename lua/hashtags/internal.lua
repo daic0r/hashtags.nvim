@@ -48,7 +48,7 @@ local M = {
 
    --- @type table<string, DataEntry[]>
    data = nil,
-   --- @type table<string, DataByFileEntry>
+   --- @type table<string|number, DataByFileEntry>
    data_by_file = nil,
 }
 
@@ -112,6 +112,22 @@ local function clear_data_for_file_or_buf(file_or_buf)
    end
 end
 
+--- Create extmarks for a buffer
+--- @param bufnr number
+--- @param tags table
+--- @param on_create_func fun(hashtag: DataEntry2, mark_id: number)
+local function create_extmarks(bufnr, tags, on_create_func)
+   for _, hashtag in ipairs(tags) do
+      local mark_id = vim.api.nvim_buf_set_extmark(bufnr, globals.HASHTAGS_HIGHLIGHT_NS, hashtag.row-1, hashtag.from-1, {
+         virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
+         virt_text_pos = 'overlay',
+         hl_mode = 'replace'
+      })
+      print("Set it")
+      on_create_func(hashtag, mark_id)
+   end
+end
+
 --- Index a buffer's hashtags
 --- @param file_or_buf string|number
 --- @param lines table
@@ -160,21 +176,17 @@ local function init_autocommands(extensions)
          if not vim.tbl_contains(extensions, ev.file:match('.+%.(%w+)$')) then
             return
          end
-         if not M.data_by_file[ev.file] then
+         if not M.data_by_file[ev.file] and not M.data_by_file[ev.buf] then
             --- TODO: Index the file
             return
          end
-         local file_entry = M.data_by_file[ev.file]
+         local file_entry = M.data_by_file[ev.file] or M.data_by_file[ev.buf]
          file_entry.bufnr = ev.buf
-         for _, hashtag in ipairs(file_entry.hashtags) do
-            local mark_id = vim.api.nvim_buf_set_extmark(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, hashtag.row-1, hashtag.from-1, {
-               virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
-               virt_text_pos = 'overlay',
-               hl_mode = 'replace'
-            })
+
+         create_extmarks(ev.buf, file_entry.hashtags, function(hashtag, mark_id)
             hashtag.mark_id = mark_id
             file_entry.next_extmark_id = file_entry.next_extmark_id + 1
-
+            --
             -- Sync with other map
             local hashtag_entry = vim.tbl_filter(function(entry)
                return entry.file == ev.file and entry.row == hashtag.row and entry.from == hashtag.from
@@ -183,7 +195,7 @@ local function init_autocommands(extensions)
                hashtag_entry[1].mark_id = mark_id
                hashtag_entry[1].bufnr = ev.buf
             end
-         end
+         end)
       end
    })
    vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {
@@ -224,15 +236,11 @@ local function init_autocommands(extensions)
             local tags = index_buffer(ev.file, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false), ev.buf)
             M.merge_tags(ev.file, tags)
 
-         for _, hashtag in ipairs(M.data_by_file[ev.file].hashtags) do
-            local mark_id = vim.api.nvim_buf_set_extmark(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, hashtag.row-1, hashtag.from-1, {
-               virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
-               virt_text_pos = 'overlay',
-               hl_mode = 'replace'
-            })
-            hashtag.mark_id = mark_id
-            file_entry.next_extmark_id = file_entry.next_extmark_id + 1
-         end
+            create_extmarks(ev.buf, M.data_by_file[ev.file].hashtags, function(hashtag, mark_id)
+               hashtag.mark_id = mark_id
+               file_entry.next_extmark_id = file_entry.next_extmark_id + 1
+            end)
+
             -- local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
             --
             -- -- Iterate over buffer lines
