@@ -9,20 +9,20 @@ local shown = false
 --- @class DataEntry
 --- @field file string File that contains the hashtag
 --- @field bufnr number|nil Buffer number of the file
+--- @field lastModifiedTime number
 --- @field mark_id number
 --- @field lines table Context around the line containing the hashtag
 --- @field from number Start column of the hashtag
 --- @field to number End column of the hashtag
 --- @field row number Line number of the hashtag
---- @field lastModifiedTime number
 
 --- @class DataEntry2
 --- @field hashtag string
 --- @field mark_id number
---- @field row number
+--- @field lines table
 --- @field from number
 --- @field to number
---- @field lines table
+--- @field row number
 
 --- @class DataByFileEntry
 --- @field hashtags DataEntry2[]
@@ -129,11 +129,10 @@ local function create_extmarks(bufnr, tags, on_create_func)
 end
 
 --- Index a buffer's hashtags
---- @param file_or_buf string|number
+--- @param file_or_buf table
 --- @param lines table
---- @param buf_or_file string|number|nil
 --- @return table
-local function index_buffer(file_or_buf, lines, buf_or_file)
+local function index_buffer(file_or_buf, lines)
    local tags = {}
    local stat = type(file_or_buf)=="string" and vim.loop.fs_stat(file_or_buf)
    for row, line in ipairs(lines) do
@@ -149,8 +148,8 @@ local function index_buffer(file_or_buf, lines, buf_or_file)
             table.insert(ctx_lines, lines[i])
          end
          table.insert(tags[hashtag],
-            {file = (type(file_or_buf)=="string" and file_or_buf) or (type(buf_or_file)=="string" and buf_or_file),
-               bufnr = (type(file_or_buf)=="number" and file_or_buf) or (type(buf_or_file)=="number" and buf_or_file),
+            {file = file_or_buf.file,
+               bufnr = file_or_buf.bufnr,
                lines = ctx_lines, from = entry.from, to = entry.from + #hashtag,
                row = row, mark_id = nil, lastModifiedTime = stat and stat.mtime.nsec })
       end
@@ -233,7 +232,7 @@ local function init_autocommands(extensions)
          buf_timer:start(3000, 0, vim.schedule_wrap(function()
             vim.api.nvim_buf_clear_namespace(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
 
-            local tags = index_buffer(ev.file, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false), ev.buf)
+            local tags = index_buffer({ file = ev.file, bufnr = ev.buf }, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false))
             M.merge_tags(ev.file, tags)
 
             create_extmarks(ev.buf, M.data_by_file[ev.file].hashtags, function(hashtag, mark_id)
@@ -413,7 +412,7 @@ M.index_file = function(filename)
    if not lines then
       return nil
    end
-   local tags = index_buffer(filename, lines)
+   local tags = index_buffer({ file = filename, bufnr = nil }, lines)
    return tags
 end
 
