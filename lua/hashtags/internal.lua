@@ -290,27 +290,6 @@ local function init_autocommands(extensions)
    })
 end
 
---- Initialize the internals
----
---- This function will try to find the root directory of the project and load the index file
---- @param opts Options
-M.init = function(opts)
-   M.root = M.find_root_dir(vim.fn.getcwd())
-   if not M.root then
-      return
-   end
-   M.options = opts
-   local data = util.load_from_json(M.get_index_file())
-   if data and #data == 2 then
-      M.data = data[1]
-      M.data_by_file = data[2]
-   end
-   local config = M.load_project_config()
-   M.index_files(M.root, config.extensions)
-   init_autocommands(config.extensions)
-end
-
-
 --- Get the path to the file containing the index of hashtags
 --- @return string Options that you want to override
 M.get_index_file = function()
@@ -333,7 +312,7 @@ end
 M.load_project_config = function()
    local config_file = vim.fs.joinpath(M.root, '/.hashtags.json')
    local config = {}
-   config = util.load_from_json(config_file) or { extensions = {} }
+   config = util.load_from_json(config_file) or { include = {}, exclude = {} }
    return config
 end
 
@@ -420,21 +399,23 @@ end
 --- @param path string
 --- @param extensions table
 --- @return table The indexed data
-function M.index_files(path, extensions)
+function M.index_files(path_pattern, exclusions)
    return async.run(function()
       M.data = M.data or {}
       M.data_by_file = M.data_by_file or {}
 
-      local files = vim.fs.find(function(name, path)
-         -- #TODO make items ignorable
-         if path:find('node_modules') or path:find('public') then
-            return false
-         end
-         return vim.tbl_contains(extensions, name:match('.+%.(%w+)$'))
-      end, { limit = math.huge, type = 'file', path = path})
-
-      for _, filename in ipairs(files) do
-         local truncated_filename = truncate_file_path(path, filename)
+      -- local files = vim.fs.find(function(name, path)
+      --    -- #TODO make items ignorable
+      --    if path:find('node_modules') or path:find('public') then
+      --       return false
+      --    end
+      --    return vim.tbl_contains(extensions, name:match('.+%.(%w+)$'))
+      -- end, { limit = math.huge, type = 'file', path = path})
+      --
+      -- for _, filename in ipairs(files) do
+      --
+      util.find_files_with_wildcard(M.root, path_pattern, exclusions, function(filename)
+         local truncated_filename = truncate_file_path(M.root, filename)
          local stat = vim.loop.fs_stat(filename)
 
          if not stat then
@@ -455,7 +436,8 @@ function M.index_files(path, extensions)
             M.merge_tags(truncated_filename, tags, stat)
          end
           ::continue::
-      end
+      end)
+      -- end
 
       return M.data, M.data_by_file
    end,
@@ -463,6 +445,26 @@ function M.index_files(path, extensions)
       util.save_to_json(M.get_index_file(), data, data_by_file)
    end
    )
+end
+
+--- Initialize the internals
+---
+--- This function will try to find the root directory of the project and load the index file
+--- @param opts Options
+M.init = function(opts)
+   M.root = M.find_root_dir(vim.fn.getcwd())
+   if not M.root then
+      return
+   end
+   M.options = opts
+   local data = util.load_from_json(M.get_index_file())
+   if data and #data == 2 then
+      M.data = data[1]
+      M.data_by_file = data[2]
+   end
+   local config = M.load_project_config()
+   M.index_files(config.include, config.exclude)
+   init_autocommands(config.extensions)
 end
 
 return M
