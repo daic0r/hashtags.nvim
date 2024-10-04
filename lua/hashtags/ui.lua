@@ -14,6 +14,9 @@ local M = {
 
 M.init = function(opts)
    M.options = opts
+   -- context lines above, context lines below + the line itself + the header
+   M.entry_size = (M.options.context * 2 + 1) + 1
+
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_HIGHLIGHT,
       opts.ui.theme.menu_highlight)
@@ -31,15 +34,12 @@ M.init = function(opts)
       opts.ui.theme.buffer_marker)
 end
 
-M.new = function(bufnr, win_id, data)
+local function new(bufnr, win_id, data)
    local tbl = {}
    tbl.bufnr = bufnr
    tbl.win_id = win_id
    tbl.data = data
    tbl.cur_entry = -1
-
-   -- context lines above, context lines below + the line itself + the header
-   tbl.entry_size = (M.options.context * 2 + 1) + 1
 
    setmetatable(tbl, { __index = M })
    return tbl
@@ -114,16 +114,13 @@ M.show = function(data)
 
    local bufnr = vim.api.nvim_win_get_buf(win_id)
 
-   local this = M.new(bufnr, win_id, data)
+   local this = new(bufnr, win_id, data)
 
    vim.keymap.set('n', 'q', ':q<CR>', { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', '<Esc>', ':q<CR>', { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', 'j', function() this:next_entry(1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', 'k', function() this:next_entry(-1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', '<CR>', function() this:do_nav() end, { buffer = bufnr, noremap = true, silent = true })
-   -- vim.api.nvim_buf_set_keymap(bufnr, 'n', 'q', ':q<CR>', { noremap = true, silent = true })
-   -- vim.api.nvim_buf_set_keymap(bufnr, 'n', 'j', ':lua next_entry(' .. cur_entry .. ', 1)<CR>', { noremap = true, silent = true })
-   -- vim.api.nvim_buf_set_keymap(bufnr, 'n', 'k', ':lua next_entry(' .. cur_entry .. ', -1)<CR>', { noremap = true, silent = true })
    for _, entry in ipairs(data) do
       this:add_entry(entry)
    end

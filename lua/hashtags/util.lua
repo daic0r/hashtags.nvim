@@ -87,16 +87,6 @@ local function has_extension(file, extensions)
    return false
 end
 
--- Helper function to check if a file or directory should be excluded
-local function is_excluded(entry, exclude_patterns)
-   for _, pattern in ipairs(exclude_patterns) do
-      if entry:match(pattern) then
-         return true
-      end
-   end
-   return false
-end
-
 --- Helper function to replace glob wildcards with Lua patterns
 --- This is necessary because Lua patterns are not the same as glob patterns
 --- and we need to convert them to match the same files
@@ -106,7 +96,13 @@ local function replace_glob_wildcards(path)
    return path:gsub("%.", "%%."):gsub("%*", ".*"):gsub("%?", "."):gsub("%+", ".+"):gsub("%-", "%%-")
 end
 
--- Recursive file traversal using vim.loop with support for wildcards, extension matching, and exclusions
+--- Traverse directory recursively with support for glob patterns
+--- @param dir string: The directory to traverse
+--- @param pattern_parts string[][]: The pattern parts, each sub-array contains the parts of a pattern separated by '/'
+--- @param index number: The current traversal depth
+--- @param exclude_patterns string[]: A list of patterns to exclude; can start with ./ or not
+--- @param inside_double_asterisk boolean: Whether we're inside a '**' pattern or beyond
+--- @param callback function: A callback function to call for each file that matches the pattern
 local function traverse_dir(dir, pattern_parts, index, exclude_patterns, inside_double_asterisk, callback)
    -- If index exceeds pattern parts, use the last part (since we're past '**')
    local current_parts = {}
@@ -139,57 +135,53 @@ local function traverse_dir(dir, pattern_parts, index, exclude_patterns, inside_
 
       -- If the current part is "**", match files or continue in all subdirectories at any depth
       local is_wildcard = inside_double_asterisk or M.array_any(current_parts, function(_, part) return part == "**" end)
-         if stat and stat.type == "directory" then
-            -- Also attempt to match the next pattern part after "**"
-            traverse_dir(path, pattern_parts, index + 1, exclude_patterns, is_wildcard, callback)
-         elseif stat and stat.type == "file" then
-            local has_relevant_part, i = M.array_any(pattern_parts, function(_, parts) return index >= #parts end)
-            if has_relevant_part then
-               local extensions = parse_extensions_from_pattern(pattern_parts[i][#pattern_parts[i]])
-               if has_extension(entry, extensions) or vim.tbl_contains(current_parts, "*") then
-                  if DEBUG then
-                     print("Adding:", path)
-                  end
-                  callback(path)
-                  -- table.insert(result, path)
+
+      if stat and stat.type == "directory" then
+         traverse_dir(path, pattern_parts, index + 1, exclude_patterns, is_wildcard, callback)
+      elseif stat and stat.type == "file" then
+         local reached_file_depth, i = M.array_any(pattern_parts, function(_, parts) return index >= #parts end)
+         if reached_file_depth then
+            local extensions = parse_extensions_from_pattern(pattern_parts[i][#pattern_parts[i]])
+            if has_extension(entry, extensions) then
+               if DEBUG then
+                  print("Adding:", path)
                end
+               callback(path)
+               -- table.insert(result, path)
             end
          end
+      end
       ::continue::
    end
 end
 
--- Wildcard search function with extensions and exclusions
--- @param path_patterns string[]: The path patterns to search for
--- @param exclude_patterns table: A list of patterns to exclude
--- @param callback function: A callback function to call for each file that matches the pattern
--- @return table: A list of files that match the pattern
+--- Wildcard search function with extensions and exclusions
+--- @param root string: The root directory to start the search from
+--- @param path_patterns string[]: The path patterns to search for
+--- @param exclude_patterns table: A list of patterns to exclude
+--- @param callback function: A callback function to call for each file that matches the pattern
 M.find_files_with_wildcard = function(root, path_patterns, exclude_patterns, callback)
    local pattern_parts = {}
+   -- Split the patterns into parts
    for i, pattern in ipairs(path_patterns) do
       pattern_parts[i] = {}
       for _, part in ipairs(split_string(pattern, "/")) do
          table.insert(pattern_parts[i], part)
       end
    end
-   -- local exclude_pattern_parts = {}
+
    for i,pattern in ipairs(exclude_patterns) do
       if pattern:sub(1, 2) == "./" then
          pattern = pattern:sub(3)
       end
       exclude_patterns[i] = replace_glob_wildcards(pattern)
    end
-   -- for i, pattern in ipairs(exclude_patterns) do
-   --    exclude_pattern_parts[i] = {}
-   --    for _, part in ipairs(split_string(pattern, "/")) do
-   --       table.insert(exclude_pattern_parts[i], part)
-   --    end
-   -- end
+
    if DEBUG then
       print("exclude_patterns", vim.inspect(exclude_patterns))
       print("pattern_parts", vim.inspect(pattern_parts))
    end
-   return traverse_dir(root, pattern_parts, 2, exclude_patterns, false, callback)
+   traverse_dir(root, pattern_parts, 2, exclude_patterns, false, callback)
 end
 
 return M

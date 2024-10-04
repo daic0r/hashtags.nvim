@@ -158,15 +158,11 @@ local function index_buffer(file_or_buf, lines)
 end
 
 --- Initialize the init_autocommands
---- @param extensions table Array of file extensions
 local function init_autocommands()
-   local augroup = vim.api.nvim_create_augroup('DAIC0R_HASHTAGS', { 
-      clear = true
-   })
    -- #TODO: new file is created, add it to the index
    -- #TODO: file is being edited, check for new hashtags
    vim.api.nvim_create_autocmd({'BufReadPost'}, {
-      group = augroup,
+      group = globals.HASHTAGS_AUGROUP,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
          if not M.data then
@@ -194,96 +190,73 @@ local function init_autocommands()
       end
    })
    vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {
-      group = augroup,
+      group = globals.HASHTAGS_AUGROUP,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
-         local buf_timer = buffer_timers[ev.buf]
-         if not buf_timer then
-            buffer_timers[ev.buf] = vim.loop.new_timer()
+         local buf_timer = nil
+         if M.options.refresh_timeout then
             buf_timer = buffer_timers[ev.buf]
+            if not buf_timer then
+               buffer_timers[ev.buf] = vim.loop.new_timer()
+               buf_timer = buffer_timers[ev.buf]
+            end
+            if buf_timer:is_active() then
+               buf_timer:stop()
+            end
          end
-         if buf_timer:is_active() then
-            buf_timer:stop()
-         end
+
          -- For some reason here the absolute path is used,
          -- whereas above it isn't
-         ev.file = ev.file:sub(#M.root + 2)
+         ev.file = M.truncate_file_path(ev.file)
+
          --- @type DataByFileEntry
          local file_entry = M.data_by_file[ev.file]
          if not file_entry then
             return
          end
-         for _, hashtag in ipairs(file_entry.hashtags) do
-            if hashtag.mark_id then
-               local ext_mark_item = vim.api.nvim_buf_get_extmark_by_id(ev.buf,
+
+         -- No timeout given -> let's update the positions at least
+         if not M.options.refresh_timeout then
+            for _, hashtag in ipairs(file_entry.hashtags) do
+               if hashtag.mark_id then
+                  local ext_mark_item = vim.api.nvim_buf_get_extmark_by_id(ev.buf,
                   globals.HASHTAGS_HIGHLIGHT_NS,
                   hashtag.mark_id,
                   { details = false, hl_name = false }
-               )
-               hashtag.row = ext_mark_item[1] + 1
-               hashtag.from = ext_mark_item[2] + 1
+                  )
+                  hashtag.row = ext_mark_item[1] + 1
+                  hashtag.from = ext_mark_item[2] + 1
+               end
             end
+            return
+         else
+            buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
+               vim.api.nvim_buf_clear_namespace(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
+
+               local tags = index_buffer({ file = ev.file, bufnr = ev.buf }, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false))
+               M.merge_tags(ev.file, tags)
+
+               create_extmarks(ev.buf, M.data_by_file[ev.file].hashtags, function(hashtag, mark_id)
+                  hashtag.mark_id = mark_id
+                  file_entry.next_extmark_id = file_entry.next_extmark_id + 1
+               end)
+            end))
          end
-
-         buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
-            vim.api.nvim_buf_clear_namespace(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
-
-            local tags = index_buffer({ file = ev.file, bufnr = ev.buf }, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false))
-            M.merge_tags(ev.file, tags)
-
-            create_extmarks(ev.buf, M.data_by_file[ev.file].hashtags, function(hashtag, mark_id)
-               hashtag.mark_id = mark_id
-               file_entry.next_extmark_id = file_entry.next_extmark_id + 1
-            end)
-
-            -- local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
-            --
-            -- -- Iterate over buffer lines
-            -- for row,line in ipairs(lines) do
-            --    local hashtags = parse_line(line)
-            --    -- Iterate over line hashtags
-            --    for _, entry in ipairs(hashtags) do
-            --       -- If we do not have this particular instance of the hashtag yet,
-            --       -- add it to the index
-            --       entry.row = row
-            --
-            --       -- Get only the entries in the index for this hashtags that
-            --       -- pertain to the current buffer
-            --       local pertaining_hashtags = vim.tbl_filter(function(hashtag)
-            --          return hashtag.file == ev.file or hashtag.bufnr == ev.buf
-            --       end, M.data[entry.hashtag])
-            --       if not has_buffer_hashtag_instance(pertaining_hashtags, entry) then
-            --          -- nvim_buf_set_extmark takes 0-based row and column
-            --          local mark_id = vim.api.nvim_buf_set_extmark(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, row-1, entry.from-1, {
-            --             virt_text = {{entry.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
-            --             virt_text_pos = 'overlay',
-            --             hl_mode = 'replace'
-            --          })
-            --          table.insert(file_entry.hashtags, {
-            --             hashtag = entry.hashtag,
-            --             row = row,
-            --             from = entry.from,
-            --             to = entry.from + #entry.hashtag,
-            --             lines = get_context_lines(lines, row, M.options.context),
-            --             mark_id = mark_id
-            --          })
-            --          M.data[entry.hashtag] = M.data[entry.hashtag] or {}
-            --          table.insert(M.data[entry.hashtag], {
-            --             file = ev.file,
-            --             bufnr = ev.buf,
-            --             mark_id = mark_id,
-            --             lines = get_context_lines(lines, row, M.options.context),
-            --             from = entry.from,
-            --             to = entry.from + #entry.hashtag,
-            --             row = row,
-            --             lastModifiedTime = nil,
-            --          })
-            --       end
-            --    end
-            -- end
-         end))
       end
    })
+end
+
+--- Read a file into lines
+--- @param file string
+--- @return table|nil
+local function read_file_into_lines(file)
+   local f = io.open(file, "r")
+   if not f then
+      return nil
+   end
+   local content = f:read("*a")
+   f:close()
+   return vim.split(content, '\n')
 end
 
 --- Get the path to the file containing the index of hashtags
@@ -313,24 +286,10 @@ M.load_project_config = function()
 end
 
 --- Truncate the file path by removing the root
---- @param root string
 --- @param filepath string
 --- @return string
-local function truncate_file_path(root, filepath)
-   return filepath:sub(#root + 2)
-end
-
---- Read a file into lines
---- @param file string
---- @return table|nil
-local function read_file_into_lines(file)
-   local f = io.open(file, "r")
-   if not f then
-      return nil
-   end
-   local content = f:read("*a")
-   f:close()
-   return vim.split(content, '\n')
+M.truncate_file_path = function(filepath)
+   return filepath:sub(#M.root + 2)
 end
 
 --- Merge tags into the index
@@ -411,7 +370,7 @@ function M.index_files(path_pattern, exclusions)
       -- for _, filename in ipairs(files) do
       --
       util.find_files_with_wildcard(M.root, path_pattern, exclusions, function(filename)
-         local truncated_filename = truncate_file_path(M.root, filename)
+         local truncated_filename = M.truncate_file_path(filename)
          local stat = vim.loop.fs_stat(filename)
 
          if not stat then

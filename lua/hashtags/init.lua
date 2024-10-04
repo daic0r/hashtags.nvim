@@ -15,7 +15,7 @@ M.nav_next = function()
       return
    end
    local current = vim.api.nvim_get_current_buf()
-   local this_file = vim.api.nvim_buf_get_name(current)
+   local this_file = internal.truncate_file_path(vim.api.nvim_buf_get_name(current))
    local cursor_pos = vim.api.nvim_win_get_cursor(0)
    local next_idx = 0
    for idx, entry in ipairs(index[cword]) do
