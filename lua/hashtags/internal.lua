@@ -15,6 +15,7 @@ local shown = false
 --- @field from number Start column of the hashtag
 --- @field to number End column of the hashtag
 --- @field row number Line number of the hashtag
+--- @field size number Size of the file
 
 --- @class DataEntry2
 --- @field hashtag string
@@ -28,6 +29,7 @@ local shown = false
 --- @field hashtags DataEntry2[]
 --- @field next_extmark_id number
 --- @field lastModifiedTime number|nil
+--- @field size number|nil
 --- @field bufnr number|nil
 
 --- @class EventArgs
@@ -133,7 +135,11 @@ end
 --- @return table
 local function index_buffer(file_or_buf, lines)
    local tags = {}
-   local stat = type(file_or_buf)=="string" and vim.loop.fs_stat(file_or_buf)
+   local stat = file_or_buf.file and vim.loop.fs_stat(file_or_buf.file)
+   local size
+   if stat then
+      size = stat.size
+   end
    for row, line in ipairs(lines) do
       local hashtags = parse_line(line)
       for _,entry in ipairs(hashtags) do
@@ -144,19 +150,43 @@ local function index_buffer(file_or_buf, lines)
             if i < 1 or i > #lines then
                table.insert(ctx_lines, '')
             end
-            table.insert(ctx_lines, lines[i])
+            table.insert(ctx_lines, lines[i]:sub(1, math.min(100, #lines[i])))
          end
          table.insert(tags[hashtag],
             {file = file_or_buf.file,
                bufnr = file_or_buf.bufnr,
                lines = ctx_lines, from = entry.from, to = entry.from + #hashtag,
-               row = row, mark_id = nil, lastModifiedTime = stat and stat.mtime.nsec })
+               row = row, mark_id = nil, lastModifiedTime = stat and stat.mtime.nsec,
+               size = size
+            })
       end
    end
    return tags
 end
 
---- Initialize the init_autocommands
+--- Reparse a buffer 
+--- @param bufnr number
+--- @param file string
+local function reparse_buffer(bufnr, file)
+   if file:find(M.root, 1, true) then
+      file = M.truncate_file_path(file)
+   end
+   local file_entry = M.data_by_file[file]
+
+   vim.api.nvim_buf_clear_namespace(bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
+
+   local tags = index_buffer({ file = file, bufnr = bufnr }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
+   M.merge_tags(file, tags)
+
+   create_extmarks(bufnr, M.data_by_file[file].hashtags, function(hashtag, mark_id)
+      hashtag.mark_id = mark_id
+      file_entry.next_extmark_id = file_entry.next_extmark_id + 1
+   end)
+end
+
+--- Initialize the autocommands:
+--- 1) BufReadPost: When a new file is opened, create extmarks for the hashtags
+--- 2) TextChanged, TextChangedI: When a file is being edited, check for new hashtags
 local function init_autocommands()
    -- #TODO: new file is created, add it to the index
    -- #TODO: file is being edited, check for new hashtags
@@ -214,6 +244,7 @@ local function init_autocommands()
             return
          end
 
+         print(vim.inspect(file_entry))
          -- No timeout given -> let's update the positions at least
          if not M.options.refresh_timeout then
             for _, hashtag in ipairs(file_entry.hashtags) do
@@ -228,21 +259,23 @@ local function init_autocommands()
                end
             end
             return
-         else
+         elseif not M.options.refresh_file_size_limit or file_entry.size <= M.options.refresh_file_size_limit then
             buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
-               vim.api.nvim_buf_clear_namespace(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
-
-               local tags = index_buffer({ file = ev.file, bufnr = ev.buf }, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false))
-               M.merge_tags(ev.file, tags)
-
-               create_extmarks(ev.buf, M.data_by_file[ev.file].hashtags, function(hashtag, mark_id)
-                  hashtag.mark_id = mark_id
-                  file_entry.next_extmark_id = file_entry.next_extmark_id + 1
-               end)
+               reparse_buffer(ev.buf, ev.file)
             end))
          end
       end
    })
+end
+
+--- Initialize the commands
+--- 1) Reparse: Reparse the current buffer
+local function init_commands()
+   vim.api.nvim_create_user_command(globals.COMMAND_PREFIX .. "Reparse", function(_)
+      local bufnr = vim.api.nvim_get_current_buf()
+      local file = vim.api.nvim_buf_get_name(bufnr)
+      reparse_buffer(bufnr, file)
+   end, {})
 end
 
 --- Read a file into lines
@@ -322,7 +355,8 @@ M.merge_tags = function(file_or_buf, tags, stat)
    M.data_by_file[file_or_buf] =
       { hashtags = {}, next_extmark_id = 0,
          lastModifiedTime = stat and stat.mtime.nsec,
-         bufnr = bufnr
+         bufnr = bufnr,
+         size = stat and stat.size
       }
    for tag,entry_array in pairs(tags) do
       for _, entry in ipairs(entry_array) do
@@ -406,6 +440,7 @@ end
 --- This function will try to find the root directory of the project and load the index file
 --- @param opts Options
 M.init = function(opts)
+   assert(opts.refresh_file_size_limit)
    M.root = M.find_root_dir(vim.fn.getcwd())
    if not M.root then
       return
@@ -419,6 +454,7 @@ M.init = function(opts)
    local config = M.load_project_config()
    M.index_files(config.include, config.exclude)
    init_autocommands()
+   init_commands()
 end
 
 return M

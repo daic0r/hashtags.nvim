@@ -17,7 +17,6 @@ M.init = function(opts)
    M.options = opts
    -- context lines above, context lines below + the line itself + the header
    M.entry_size = (M.options.context_top + 1 + M.options.context_bottom) + 1
-   print(M.entry_size)
 
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_HIGHLIGHT,
@@ -148,7 +147,6 @@ M.show = function(data)
    local win_id = popup.create({}, opts)
    vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
    vim.api.nvim_win_set_option(win_id, "number", false)
-   vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
 
    local bufnr = vim.api.nvim_win_get_buf(win_id)
 

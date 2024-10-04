@@ -17,12 +17,14 @@
 --- @field context_top number
 --- @field context_bottom number
 --- @field refresh_timeout number
+--- @field refresh_file_size_limit number
 
 --- @type Options
 M = {
    context_top = 1,
    context_bottom = 2,
    refresh_timeout = 2000,
+   refresh_file_size_limit = 1024 * 64,
    ui = {
       width = 90,
       height = 20,
