@@ -14,12 +14,14 @@
 
 --- @class Options
 --- @field ui UiOptions
---- @field context number
+--- @field context_top number
+--- @field context_bottom number
 --- @field refresh_timeout number
 
 --- @type Options
 M = {
-   context = 1,
+   context_top = 1,
+   context_bottom = 2,
    refresh_timeout = 2000,
    ui = {
       width = 90,
@@ -30,8 +32,8 @@ M = {
          menu_highlight = { fg = 'white', bg = 'blue' },
          menu_selected_highlight = { fg = 'blue', bg = 'white' },
          menu_filename = { fg = 'yellow', bg = 'blue' },
-         menu_linenumber = { fg = 'green', bg = 'blue' },
-         menu_context = { fg = 'grey', bg = 'blue' },
+         menu_linenumber = { fg = 'red', bg = 'blue' },
+         menu_context = { fg = 'lightgreen', bg = 'blue' },
          buffer_marker = { fg = 'white', bg = 'teal' },
       },
    },

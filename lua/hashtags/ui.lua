@@ -9,13 +9,15 @@ local globals = require("hashtags.globals")
 --- @field cur_entry number
 --- @field options Options
 --- @field entry_size number
+--- @field extmarks number[]
 local M = {
 }
 
 M.init = function(opts)
    M.options = opts
    -- context lines above, context lines below + the line itself + the header
-   M.entry_size = (M.options.context * 2 + 1) + 1
+   M.entry_size = (M.options.context_top + 1 + M.options.context_bottom) + 1
+   print(M.entry_size)
 
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_HIGHLIGHT,
@@ -40,6 +42,7 @@ local function new(bufnr, win_id, data)
    tbl.win_id = win_id
    tbl.data = data
    tbl.cur_entry = -1
+   tbl.extmarks = {}
 
    setmetatable(tbl, { __index = M })
    return tbl
@@ -56,28 +59,63 @@ function M:add_entry(entry)
    vim.api.nvim_buf_set_lines(self.bufnr, start, -1, false, {line1, unpack(entry.lines)})
 end
 
+--- @class ColRange
+--- @field from number
+--- @field to number
 
-function M:highlight_buf_line(line)
+--- Highlights a line in the buffer
+--- @param line number The line to highlight
+--- @param ranges table<string, ColRange> A table with the column ranges to highlight
+function M:highlight_buf_line(line, ranges)
    local line_array = vim.api.nvim_buf_get_lines(self.bufnr, line, line+1, false)
    if #line_array == 0 then
       return
    end
 
    local line_text = line_array[1]
-   local virt_text = line_text .. string.rep(' ', vim.api.nvim_win_get_width(self.win_id) - #line_text)
+   local max_to = -1
+   for _, range in pairs(ranges) do
+      max_to = math.max(max_to, range.to)
+   end
+   for hl_group, range in pairs(ranges) do
+      local virt_text = line_text:sub(range.from, range.to)
+      if range.to == max_to then
+         virt_text = virt_text .. string.rep(' ', vim.api.nvim_win_get_width(self.win_id) - #virt_text)
+      end
+      --local virt_text = line_text .. string.rep(' ', vim.api.nvim_win_get_width(self.win_id) - #line_text)
+      local opts = {
+         virt_text = { { virt_text, hl_group } },
+         virt_text_pos = 'overlay',  -- Make the virtual text overlay the line
+         hl_eol = true
+      }
+      local mark_id = vim.api.nvim_buf_set_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, line, range.from-1, opts)
+      table.insert(self.extmarks, mark_id)
+   end
    --vim.api.nvim_buf_add_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, HASHTAGS_MENU_HIGHLIGHT, line, 0, #line_text)
-   vim.api.nvim_buf_set_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, line, 0, {
-       virt_text = { { virt_text, globals.HASHTAGS_MENU_HIGHLIGHT } },
-       virt_text_pos = 'overlay',  -- Make the virtual text overlay the line
-    })
+   -- vim.api.nvim_buf_set_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, line, 0, {
+   --     virt_text = { { virt_text, globals.HASHTAGS_MENU_HIGHLIGHT } },
+   --     virt_text_pos = 'overlay',  -- Make the virtual text overlay the line
+   --  })
 end
 
 function M:next_entry(dir)
    local lines = vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
    self.cur_entry = (self.cur_entry + dir) % (#lines / self.entry_size)
-   vim.api.nvim_buf_clear_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
-   for i = 0, self.entry_size-1 do
-      self:highlight_buf_line(self.cur_entry * self.entry_size + i)
+   local begin_line = self.cur_entry * self.entry_size + 1
+   --vim.api.nvim_buf_clear_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
+   for _, mark_id in ipairs(self.extmarks) do
+      vim.api.nvim_buf_del_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, mark_id)
+   end
+   self.extmarks = {}
+
+   self:highlight_buf_line(begin_line-1, {
+      [globals.HASHTAGS_MENU_FILENAME] = { from = 1, to = lines[begin_line]:find(':') },
+      [globals.HASHTAGS_MENU_LINENUMBER] = { from = lines[begin_line]:find(':') + 1, to = #lines[begin_line] },
+   })
+   for i = 1, self.entry_size-1 do
+      self:highlight_buf_line(begin_line-1+i, {
+         [globals.HASHTAGS_MENU_CONTEXT] = { from = 1, to = #lines[begin_line+i] },
+      })
    end
    vim.api.nvim_win_set_cursor(self.win_id, {self.cur_entry * self.entry_size + 1, 0})
 end
@@ -87,7 +125,6 @@ function M:do_nav()
    local file = entry.file
    local cursor_pos = { entry.row, entry.from }
    vim.api.nvim_win_close(self.win_id, true)
-   print(entry.bufnr)
    if entry.bufnr then
       vim.api.nvim_set_current_buf(entry.bufnr)
    elseif file then
@@ -111,6 +148,7 @@ M.show = function(data)
    local win_id = popup.create({}, opts)
    vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
    vim.api.nvim_win_set_option(win_id, "number", false)
+   vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
 
    local bufnr = vim.api.nvim_win_get_buf(win_id)
 
@@ -128,6 +166,8 @@ M.show = function(data)
    this:next_entry(1)
 
    vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
+   vim.api.nvim_buf_set_option(bufnr, "guicursor", "")
+   vim.api.nvim_buf_set_option(bufnr, "buftype", "nofile")
 end
 
 return M

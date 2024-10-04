@@ -123,7 +123,6 @@ local function create_extmarks(bufnr, tags, on_create_func)
          virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
          virt_text_pos = 'overlay',
       })
-      print("Set it")
       on_create_func(hashtag, mark_id)
    end
 end
@@ -141,7 +140,7 @@ local function index_buffer(file_or_buf, lines)
          local hashtag = entry.hashtag
          local ctx_lines = {}
          tags[hashtag] = tags[hashtag] or {}
-         for i = row-M.options.context, row+M.options.context do
+         for i = row-M.options.context_top, row+M.options.context_bottom do
             if i < 1 or i > #lines then
                table.insert(ctx_lines, '')
             end
