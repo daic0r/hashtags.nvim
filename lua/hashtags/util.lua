@@ -1,6 +1,6 @@
 local M = {}
 
-local DEBUG = true
+local DEBUG = false
 
 M.array_any = function(tbl, fn)
    for i, v in ipairs(tbl) do
@@ -107,23 +107,12 @@ local function replace_glob_wildcards(path)
 end
 
 -- Recursive file traversal using vim.loop with support for wildcards, extension matching, and exclusions
-local function traverse_dir(dir, pattern_parts, index, exclude_patterns, callback)
+local function traverse_dir(dir, pattern_parts, index, exclude_patterns, inside_double_asterisk, callback)
    -- If index exceeds pattern parts, use the last part (since we're past '**')
    local current_parts = {}
    for _, part in ipairs(pattern_parts) do
       table.insert(current_parts, part[math.min(index, #part)])
    end
-
-   -- local current_parts_exclude = {}
-   -- for _, part in ipairs(exclude_patterns) do
-   --   table.insert(current_parts_exclude, part[math.min(index, #part)])
-   -- end
-
-   -- local current_part = pattern_parts[math.min(index, #pattern_parts)]
-   -- local current_part_exclude = exclude_patterns[math.min(index, #pattern_parts)]
-
-   -- Parse extensions from the current part (if it contains an extension pattern)
-   -- local extensions = parse_extensions_from_pattern(pattern_parts[#pattern_parts])
 
    local handle = vim.loop.fs_scandir(dir)
    if not handle then
@@ -147,59 +136,25 @@ local function traverse_dir(dir, pattern_parts, index, exclude_patterns, callbac
             goto continue
          end
       end
-      -- if is_excluded(entry, exclude_patterns) then
-      --   goto continue
-      -- end
 
       -- If the current part is "**", match files or continue in all subdirectories at any depth
-      local is_wildcard, wildcard_idx = M.array_any(current_parts, function(_, part) return part == "**" end)
-      if is_wildcard then
+      local is_wildcard = inside_double_asterisk or M.array_any(current_parts, function(_, part) return part == "**" end)
          if stat and stat.type == "directory" then
-            -- Recursively traverse subdirectories for "**"
-            traverse_dir(path, pattern_parts, index, exclude_patterns, callback)
             -- Also attempt to match the next pattern part after "**"
-            traverse_dir(path, pattern_parts, index + 1, exclude_patterns, callback)
+            traverse_dir(path, pattern_parts, index + 1, exclude_patterns, is_wildcard, callback)
          elseif stat and stat.type == "file" then
-            local extensions = parse_extensions_from_pattern(pattern_parts[wildcard_idx][#pattern_parts[wildcard_idx]])
-            -- Match against the final pattern part or extensions
-            if has_extension(entry, extensions) then
-               if DEBUG then 
+            local has_relevant_part, i = M.array_any(pattern_parts, function(_, parts) return index >= #parts end)
+            if has_relevant_part then
+               local extensions = parse_extensions_from_pattern(pattern_parts[i][#pattern_parts[i]])
+               if has_extension(entry, extensions) or vim.tbl_contains(current_parts, "*") then
+                  if DEBUG then
+                     print("Adding:", path)
+                  end
                   callback(path)
+                  -- table.insert(result, path)
                end
-               -- table.insert(result, path)
             end
          end
-      elseif stat and stat.type == "directory" and vim.tbl_contains(current_parts, entry) then
-         -- If it matches a directory name, continue traversal to the next part
-         traverse_dir(path, pattern_parts, index + 1, exclude_patterns, callback)
-      elseif stat and stat.type == "file" then
-         local has_relevant_part, i = M.array_any(pattern_parts, function(_, parts) return index >= #parts end)
-         if has_relevant_part then
-            -- If it's a file and the last part, check for extensions and match
-            local extensions = parse_extensions_from_pattern(pattern_parts[i][#pattern_parts[i]])
-            if has_extension(entry, extensions) then
-               if DEBUG then
-                  print("Adding:", path)
-               end
-               callback(path)
-               -- table.insert(result, path)
-            end
-         end
-
-         -- -- If it's a file and the last part, check for extensions and match
-         -- local extensions = parse_extensions_from_pattern(pattern_parts[pattern_idx][#pattern_parts])
-         -- if has_extension(entry, extensions) then
-         --   callback(path)
-         --   --table.insert(result, path)
-         -- end
-      elseif stat and stat.type == "file" and vim.tbl_contains(current_parts, "*") then
-         -- If current part is "*" and we're at the last index, include the file
-         if DEBUG then
-            print("Adding:", path)
-         end
-         callback(path)
-         -- table.insert(result, path)
-      end
       ::continue::
    end
 end
@@ -234,7 +189,7 @@ M.find_files_with_wildcard = function(root, path_patterns, exclude_patterns, cal
       print("exclude_patterns", vim.inspect(exclude_patterns))
       print("pattern_parts", vim.inspect(pattern_parts))
    end
-   return traverse_dir(root, pattern_parts, 2, exclude_patterns, callback)
+   return traverse_dir(root, pattern_parts, 2, exclude_patterns, false, callback)
 end
 
 return M
