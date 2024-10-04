@@ -1,9 +1,13 @@
+local globals = require('hashtags.globals')
+
 --- @class Theme
---- @field menu_highlight table
---- @field menu_selected_highlight table 
 --- @field menu_filename table
 --- @field menu_linenumber table
 --- @field menu_context table
+--- @field menu_filename_selected table
+--- @field menu_linenumber_selected table
+--- @field menu_context_selected table
+--- @field buffer_marker table
 
 --- @class UiOptions
 --- @field width number
@@ -19,6 +23,10 @@
 --- @field refresh_timeout number
 --- @field refresh_file_size_limit number
 
+local sel_bg = vim.api.nvim_get_hl(0, { name = 'PmenuSel' }).bg
+local title_fg = vim.api.nvim_get_hl(0, { name = 'Title' }).fg
+local statusline_fg = vim.api.nvim_get_hl(0, { name = 'StatusLine' }).fg
+
 --- @type Options
 M = {
    context_top = 1,
@@ -31,11 +39,12 @@ M = {
       borderchars = { "─", "│", "─", "│", "╭", "╮", "╯", "╰" },
       border = true,
       theme = {
-         menu_highlight = { fg = 'white', bg = 'blue' },
-         menu_selected_highlight = { fg = 'blue', bg = 'white' },
-         menu_filename = { fg = 'yellow', bg = 'blue' },
-         menu_linenumber = { fg = 'red', bg = 'blue' },
-         menu_context = { fg = 'lightgreen', bg = 'blue' },
+         menu_filename = { fg = title_fg, bg = 'none' },
+         menu_linenumber = { fg = 'lightred', bg = 'none' },
+         menu_context = { fg = statusline_fg, bg = 'none' },
+         menu_filename_selected = { fg = title_fg, bg = sel_bg },
+         menu_linenumber_selected = { fg = 'lightred', bg = sel_bg },
+         menu_context_selected = { fg = statusline_fg, bg = sel_bg },
          buffer_marker = { fg = 'white', bg = 'teal' },
       },
    },

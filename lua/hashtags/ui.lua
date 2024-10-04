@@ -19,9 +19,6 @@ M.init = function(opts)
    M.entry_size = (M.options.context_top + 1 + M.options.context_bottom) + 1
 
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
-      globals.HASHTAGS_MENU_HIGHLIGHT,
-      opts.ui.theme.menu_highlight)
-   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_FILENAME,
       opts.ui.theme.menu_filename)
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
@@ -30,6 +27,17 @@ M.init = function(opts)
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_MENU_CONTEXT,
       opts.ui.theme.menu_context)
+
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_FILENAME_SELECTED,
+      opts.ui.theme.menu_filename_selected)
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_LINENUMBER_SELECTED,
+      opts.ui.theme.menu_linenumber_selected)
+   vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
+      globals.HASHTAGS_MENU_CONTEXT_SELECTED,
+      opts.ui.theme.menu_context_selected)
+
    vim.api.nvim_set_hl(globals.HASHTAGS_HIGHLIGHT_NS,
       globals.HASHTAGS_BUFFER_MARKER,
       opts.ui.theme.buffer_marker)
@@ -97,25 +105,40 @@ function M:highlight_buf_line(line, ranges)
    --  })
 end
 
-function M:next_entry(dir)
+--- @param idx number index of the entry
+--- @param selected boolean use selected or unselected colors
+function M:color_entry(idx, selected)
    local lines = vim.api.nvim_buf_get_lines(self.bufnr, 0, -1, false)
-   self.cur_entry = (self.cur_entry + dir) % (#lines / self.entry_size)
-   local begin_line = self.cur_entry * self.entry_size + 1
-   --vim.api.nvim_buf_clear_highlight(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
+   local begin_line = (idx-1) * self.entry_size + 1
+
+   local filename_hl = selected and globals.HASHTAGS_MENU_FILENAME_SELECTED or globals.HASHTAGS_MENU_FILENAME
+   local linenumber_hl = selected and globals.HASHTAGS_MENU_LINENUMBER_SELECTED or globals.HASHTAGS_MENU_LINENUMBER
+   local context_hl = selected and globals.HASHTAGS_MENU_CONTEXT_SELECTED or globals.HASHTAGS_MENU_CONTEXT
+
+   assert(filename_hl and linenumber_hl and context_hl)
+
+   self:highlight_buf_line(begin_line-1, {
+      [filename_hl] = { from = 1, to = lines[begin_line]:find(':') },
+      [linenumber_hl] = { from = lines[begin_line]:find(':') + 1, to = #lines[begin_line] },
+   })
+   for i = 1, self.entry_size-1 do
+      self:highlight_buf_line(begin_line-1+i, {
+         [context_hl] = { from = 1, to = #lines[begin_line+i] },
+      })
+   end
+end
+
+function M:next_entry(dir)
+   self.cur_entry = (self.cur_entry + dir) % #self.data
    for _, mark_id in ipairs(self.extmarks) do
       vim.api.nvim_buf_del_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, mark_id)
    end
    self.extmarks = {}
 
-   self:highlight_buf_line(begin_line-1, {
-      [globals.HASHTAGS_MENU_FILENAME] = { from = 1, to = lines[begin_line]:find(':') },
-      [globals.HASHTAGS_MENU_LINENUMBER] = { from = lines[begin_line]:find(':') + 1, to = #lines[begin_line] },
-   })
-   for i = 1, self.entry_size-1 do
-      self:highlight_buf_line(begin_line-1+i, {
-         [globals.HASHTAGS_MENU_CONTEXT] = { from = 1, to = #lines[begin_line+i] },
-      })
+   for i = 1, #self.data do
+      self:color_entry(i, i == self.cur_entry+1)
    end
+
    vim.api.nvim_win_set_cursor(self.win_id, {self.cur_entry * self.entry_size + 1, 0})
 end
 
