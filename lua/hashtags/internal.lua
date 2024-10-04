@@ -435,6 +435,47 @@ function M.index_files(path_pattern, exclusions)
    )
 end
 
+--- Go to the next hashtag
+--- @param hashtag string
+--- @param direction number +1 or -1 for forward or backward
+M.nav = function(hashtag, direction)
+   assert(type(direction) == 'number')
+   assert(direction == 1 or direction == -1)
+
+   if not M.data[hashtag] then
+      return
+   end
+
+   local tag_entry = M.data[hashtag]
+
+   local current = vim.api.nvim_get_current_buf()
+   local this_file = M.truncate_file_path(vim.api.nvim_buf_get_name(current))
+   local cursor_pos = vim.api.nvim_win_get_cursor(0)
+   local next_idx = 0
+
+   for idx, entry in ipairs(tag_entry) do
+      if entry.file == this_file and entry.row == cursor_pos[1] and cursor_pos[2] >= entry.from and cursor_pos[2] <= entry.to then
+         next_idx = (idx-1 + direction) % #tag_entry
+         next_idx = next_idx + 1
+         break
+      end
+   end
+   if next_idx == 0 then
+      return
+   end
+   --- @type DataEntry
+   local next = tag_entry[next_idx]
+   assert(next and (next.file or next.bufnr))
+   if next then
+      if next.bufnr then
+         vim.api.nvim_set_current_buf(next.bufnr)
+      else
+         vim.api.nvim_command('e ' .. next.file)
+      end
+      vim.api.nvim_win_set_cursor(0, {next.row, next.from})
+   end
+end
+
 --- Initialize the internals
 ---
 --- This function will try to find the root directory of the project and load the index file
