@@ -15,10 +15,12 @@
 --- @class Options
 --- @field ui UiOptions
 --- @field context number
+--- @field refresh_timeout number
 
 --- @type Options
 M = {
    context = 1,
+   refresh_timeout = 2000,
    ui = {
       width = 90,
       height = 20,
@@ -30,7 +32,7 @@ M = {
          menu_filename = { fg = 'yellow', bg = 'blue' },
          menu_linenumber = { fg = 'green', bg = 'blue' },
          menu_context = { fg = 'grey', bg = 'blue' },
-         buffer_marker = { fg = 'red', bg = 'blue' },
+         buffer_marker = { fg = 'white', bg = 'teal' },
       },
    },
 }

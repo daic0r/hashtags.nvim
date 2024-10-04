@@ -117,11 +117,11 @@ end
 --- @param tags table
 --- @param on_create_func fun(hashtag: DataEntry2, mark_id: number)
 local function create_extmarks(bufnr, tags, on_create_func)
+   vim.api.nvim_set_hl_ns(globals.HASHTAGS_HIGHLIGHT_NS)
    for _, hashtag in ipairs(tags) do
       local mark_id = vim.api.nvim_buf_set_extmark(bufnr, globals.HASHTAGS_HIGHLIGHT_NS, hashtag.row-1, hashtag.from-1, {
          virt_text = {{hashtag.hashtag, globals.HASHTAGS_BUFFER_MARKER}},
          virt_text_pos = 'overlay',
-         hl_mode = 'replace'
       })
       print("Set it")
       on_create_func(hashtag, mark_id)
@@ -173,7 +173,6 @@ local function init_autocommands()
             return
          end
          if not M.data_by_file[ev.file] and not M.data_by_file[ev.buf] then
-            --- TODO: Index the file
             return
          end
          local file_entry = M.data_by_file[ev.file] or M.data_by_file[ev.buf]
@@ -226,7 +225,7 @@ local function init_autocommands()
             end
          end
 
-         buf_timer:start(3000, 0, vim.schedule_wrap(function()
+         buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
             vim.api.nvim_buf_clear_namespace(ev.buf, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
 
             local tags = index_buffer({ file = ev.file, bufnr = ev.buf }, vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false))
