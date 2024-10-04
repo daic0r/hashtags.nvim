@@ -172,9 +172,6 @@ local function init_autocommands()
          if not M.data then
             return
          end
-         if not vim.tbl_contains(M.data_by_file, ev.file) then
-            return
-         end
          if not M.data_by_file[ev.file] and not M.data_by_file[ev.buf] then
             --- TODO: Index the file
             return
