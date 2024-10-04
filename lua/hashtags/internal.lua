@@ -159,7 +159,7 @@ end
 
 --- Initialize the init_autocommands
 --- @param extensions table Array of file extensions
-local function init_autocommands(extensions)
+local function init_autocommands()
    local augroup = vim.api.nvim_create_augroup('DAIC0R_HASHTAGS', { 
       clear = true
    })
@@ -172,7 +172,7 @@ local function init_autocommands(extensions)
          if not M.data then
             return
          end
-         if not vim.tbl_contains(extensions, ev.file:match('.+%.(%w+)$')) then
+         if not vim.tbl_contains(M.data_by_file, ev.file) then
             return
          end
          if not M.data_by_file[ev.file] and not M.data_by_file[ev.buf] then
@@ -464,7 +464,7 @@ M.init = function(opts)
    end
    local config = M.load_project_config()
    M.index_files(config.include, config.exclude)
-   init_autocommands(config.extensions)
+   init_autocommands()
 end
 
 return M
