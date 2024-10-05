@@ -182,7 +182,8 @@ local function reparse_buffer(bufnr, file)
    vim.api.nvim_buf_clear_namespace(bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
 
    local tags = index_buffer({ file = file, bufnr = bufnr }, vim.api.nvim_buf_get_lines(bufnr, 0, -1, false))
-   M.merge_tags(file, tags)
+   local stat = vim.loop.fs_stat(file)
+   M.merge_tags(file, tags, stat)
 
    create_extmarks(bufnr, M.data_by_file[file].hashtags, function(hashtag, mark_id)
       hashtag.mark_id = mark_id
@@ -250,7 +251,7 @@ local function init_autocommands()
             return
          end
 
-         print(vim.inspect(file_entry))
+         assert(file_entry.size)
          -- No timeout given -> let's update the positions at least
          if not M.options.refresh_timeout then
             for _, hashtag in ipairs(file_entry.hashtags) do
