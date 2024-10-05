@@ -40,18 +40,24 @@ local shown = false
 --- @field id number
 --- @field match string
 
+--- @class WorkspaceConfig
+--- @field include string[]
+--- @field exclude string[]
+
 --- @class Internal
 --- @field options Options|nil
 --- @field root string|nil
---- @field data table|nil
+--- @field data table<string, DataEntry[]>|nil
+--- @field data_by_file table<string, DataByFileEntry>|nil
+--- @field workspace_config WorkspaceConfig|nil
 local M = {
    options = nil,
    root = nil,
 
-   --- @type table<string, DataEntry[]>
    data = nil,
-   --- @type table<string|number, DataByFileEntry>
    data_by_file = nil,
+
+   workspace_config = nil,
 }
 
 --- @type table<number, uv_timer_t>
@@ -270,11 +276,39 @@ end
 
 --- Initialize the commands
 --- 1) Reparse: Reparse the current buffer
+--- 2) RegenIndex: Regenerate the index
 local function init_commands()
    vim.api.nvim_create_user_command(globals.COMMAND_PREFIX .. "Reparse", function(_)
       local bufnr = vim.api.nvim_get_current_buf()
       local file = vim.api.nvim_buf_get_name(bufnr)
       reparse_buffer(bufnr, file)
+   end, {})
+   vim.api.nvim_create_user_command(globals.COMMAND_PREFIX .. "RegenIndex", function(_)
+      M.data = nil
+      M.data_by_file = nil
+      M.index_files(M.workspace_config.include, M.workspace_config.exclude)
+      vim.notify("Index regenerated", vim.log.levels.INFO)
+   end, {})
+   vim.api.nvim_create_user_command(globals.COMMAND_PREFIX .. "GenConfig", function(_)
+      local config_file = vim.fs.joinpath(M.root, globals.CONFIG_FILE_NAME)
+      if vim.loop.fs_stat(config_file) then
+         vim.notify("Config file " .. globals.CONFIG_FILE_NAME .. " already exists. Please delete it first to generate a new one.", vim.log.levels.WARN)
+         return
+      end
+      local new_config = {
+         include = {
+            "./**/*.{js,html}",
+         },
+         exclude = {
+            "./node_modules",
+            "./.git",
+            "./public",
+         }
+      }
+      if util.save_to_json(config_file, new_config) then
+         M.workspace_config = new_config
+         vim.notify("Config file " .. globals.CONFIG_FILE_NAME .. " generated.", vim.log.levels.INFO)
+      end
    end, {})
 end
 
@@ -311,7 +345,7 @@ end
 --- Loads the project config file
 --- @return table
 M.load_project_config = function()
-   local config_file = vim.fs.joinpath(M.root, '/.hashtags.json')
+   local config_file = vim.fs.joinpath(M.root, globals.CONFIG_FILE_NAME)
    local config = {}
    config = util.load_from_json(config_file) or { include = {}, exclude = {} }
    return config
@@ -384,10 +418,9 @@ M.index_file = function(filename)
 end
 
 --- Index files in a directory
---- @param path string
---- @param extensions table
---- @return table The indexed data
-function M.index_files(path_pattern, exclusions)
+--- @param path_patterns string[]
+--- @param exclusions table
+function M.index_files(path_patterns, exclusions)
    return async.run(function()
       M.data = M.data or {}
       M.data_by_file = M.data_by_file or {}
@@ -402,7 +435,7 @@ function M.index_files(path_pattern, exclusions)
       --
       -- for _, filename in ipairs(files) do
       --
-      util.find_files_with_wildcard(M.root, path_pattern, exclusions, function(filename)
+      util.find_files_with_wildcard(M.root, path_patterns, exclusions, function(filename)
          local truncated_filename = M.truncate_file_path(filename)
          local stat = vim.loop.fs_stat(filename)
 
@@ -492,8 +525,8 @@ M.init = function(opts)
       M.data = data[1]
       M.data_by_file = data[2]
    end
-   local config = M.load_project_config()
-   M.index_files(config.include, config.exclude)
+   M.workspace_config = M.load_project_config()
+   M.index_files(M.workspace_config.include, M.workspace_config.exclude)
    init_autocommands()
    init_commands()
 end

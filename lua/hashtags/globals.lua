@@ -15,4 +15,6 @@ M.HASHTAGS_MENU_CONTEXT_SELECTED = 'HashtagsMenuContextSelected'
 M.HASHTAGS_BUFFER_MARKER = 'HashtagsBufferMarker'
 M.COMMAND_PREFIX = 'Hashtags'
 
+M.CONFIG_FILE_NAME = '.hashtags.conf.json'
+
 return M

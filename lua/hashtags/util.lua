@@ -22,10 +22,19 @@ M.save_to_json = function(filename, ...)
       return false
    end
    local write_data = {}
-   for _, arg in ipairs({...}) do
-      table.insert(write_data, arg)
+   if #{...} == 1 and type(...) == "table" then
+      write_data = ...
+   else
+      for _, arg in ipairs({...}) do
+         table.insert(write_data, arg)
+      end
    end
    local json = vim.json.encode(write_data)
+   -- Attempt to format with jq
+   local ok, promise = pcall(vim.system, { 'jq' }, { stdin = json, text = true })
+   if ok then
+      json = promise:wait().stdout
+   end
    f:write(json)
    f:close()
    return true
