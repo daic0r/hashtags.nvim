@@ -1,5 +1,6 @@
 local popup = require("plenary.popup")
 local globals = require("hashtags.globals")
+local internal = require("hashtags.internal")
 
 --- UI module for hashtags.nvim
 --- @class UI
@@ -128,8 +129,9 @@ function M:color_entry(idx, selected)
    end
 end
 
-function M:next_entry(dir)
-   self.cur_entry = (self.cur_entry + dir) % #self.data
+--- Highlights the current entry
+--- @param self UI
+function M:highlight_cur_entry()
    for _, mark_id in ipairs(self.extmarks) do
       vim.api.nvim_buf_del_extmark(self.bufnr, globals.HASHTAGS_HIGHLIGHT_NS, mark_id)
    end
@@ -142,6 +144,16 @@ function M:next_entry(dir)
    vim.api.nvim_win_set_cursor(self.win_id, {self.cur_entry * self.entry_size + 1, 0})
 end
 
+--- Moves to the next entry
+--- @param dir number The direction to move in
+--- @param self UI
+function M:next_entry(dir)
+   self.cur_entry = (self.cur_entry + dir) % #self.data
+   self:highlight_cur_entry()
+end
+
+--- Navigates to the selected entry
+--- @param self UI
 function M:do_nav()
    local entry = self.data[self.cur_entry + 1]
    local file = entry.file
@@ -155,6 +167,8 @@ function M:do_nav()
    vim.api.nvim_win_set_cursor(0, cursor_pos)
 end
 
+--- Shows the UI
+--- @param data internal.DataEntry[]
 M.show = function(data)
    local opts = {
       title = "Hashtags",
@@ -166,6 +180,10 @@ M.show = function(data)
       padding = { 0, 0, 1, 1 },
       borderchars = M.options.ui.borderchars,
    }
+
+   local current_buf = vim.api.nvim_get_current_buf()
+   local this_file = internal.truncate_file_path(vim.api.nvim_buf_get_name(current_buf))
+   local cursor_pos = vim.api.nvim_win_get_cursor(0)
 
    local win_id = popup.create({}, opts)
    vim.api.nvim_win_set_hl_ns(win_id, globals.HASHTAGS_HIGHLIGHT_NS)
@@ -180,11 +198,19 @@ M.show = function(data)
    vim.keymap.set('n', 'j', function() this:next_entry(1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', 'k', function() this:next_entry(-1) end, { buffer = bufnr, noremap = true, silent = true })
    vim.keymap.set('n', '<CR>', function() this:do_nav() end, { buffer = bufnr, noremap = true, silent = true })
-   for _, entry in ipairs(data) do
+
+   this.cur_entry = 0
+   -- @type internal.DataEntry
+   for idx, entry in ipairs(data) do
       this:add_entry(entry)
+
+      if entry.file == this_file and entry.row == cursor_pos[1]
+         and cursor_pos[2] >= entry.from-1 and cursor_pos[2] <= entry.to-1 then
+            this.cur_entry = idx - 1
+      end
    end
 
-   this:next_entry(1)
+   this:highlight_cur_entry()
 
    vim.api.nvim_buf_set_option(bufnr, "modifiable", false)
    vim.api.nvim_buf_set_option(bufnr, "guicursor", "")
