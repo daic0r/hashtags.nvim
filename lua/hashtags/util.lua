@@ -14,7 +14,7 @@ end
 --- Saves data to json file
 ---
 --- @param filename string (path to file)
---- @param args table (data to be stored in the json)
+--- @param ... table[]|table (data to be stored in the json)
 --- @return boolean
 M.save_to_json = function(filename, ...)
    local f = io.open(filename, "w")
@@ -73,15 +73,54 @@ local function split_string(str, delimiter)
 end
 
 -- Helper function to parse extensions from the pattern
-local function parse_extensions_from_pattern(part)
+M.parse_extensions_from_pattern = function(part)
    local extensions = {}
-   local ext_match = part:match("{([^}]+)}")
+   local ext_match = part:match("%.{([^}]+)}$")
    if ext_match then
       for ext in ext_match:gmatch("[^,]+") do
-         table.insert(extensions, "." .. ext)
+         table.insert(extensions, ext)
       end
+      return extensions
+   end
+   ext_match = part:match("%.(.+)$")
+   if ext_match then
+      table.insert(extensions, ext_match)
+      return extensions
+   end
+   ext_match = part:match("%.%*$")
+   if ext_match then
+      table.insert(extensions, "*")
+      return extensions
    end
    return extensions
+end
+
+M.get_file_stem = function(file)
+   local match_with_dot = file:match("^(.+)%.")
+   if not match_with_dot then
+      return file
+   end
+   return match_with_dot
+end
+
+--- Helper function to match a file to a pattern
+--- @param file string: The file to match
+--- @param pattern string: The pattern to match against
+---
+M.match_file_to_pattern = function(file, pattern)
+   local stem = M.get_file_stem(pattern)
+   assert(stem)
+   stem = M.replace_glob_wildcards(stem)
+   local extensions = M.parse_extensions_from_pattern(pattern)
+   if #extensions == 0 then
+      return file:match(stem) ~= nil
+   end
+   for _, ext in ipairs(extensions) do
+      if file:match(stem .. "%." .. ext) then
+         return true
+      end
+   end
+   return false
 end
 
 -- Helper function to check if a file matches the allowed extensions
@@ -101,8 +140,8 @@ end
 --- and we need to convert them to match the same files
 --- @param path string: The path to replace wildcards in
 --- @return string: The path with wildcards replaced
-local function replace_glob_wildcards(path)
-   return path:gsub("%.", "%%."):gsub("%*", ".*"):gsub("%?", "."):gsub("%+", ".+"):gsub("%-", "%%-")
+M.replace_glob_wildcards = function(path)
+   return (path:gsub("%%", "%%%%"):gsub("%.", "%%."):gsub("%*", ".*"):gsub("%?", "."):gsub("%+", ".+"):gsub("%-", "%%-"):gsub("%$", "%%$"))
 end
 
 --- Traverse directory recursively with support for glob patterns
@@ -143,15 +182,29 @@ local function traverse_dir(dir, pattern_parts, index, exclude_patterns, inside_
       end
 
       -- If the current part is "**", match files or continue in all subdirectories at any depth
-      local is_wildcard = inside_double_asterisk or M.array_any(current_parts, function(_, part) return part == "**" end)
+      local any_current_part_is_double_astk = M.array_any(current_parts, function(_, part) return part == "**" end)
+      local is_wildcard = inside_double_asterisk or any_current_part_is_double_astk
 
       if stat and stat.type == "directory" then
          traverse_dir(path, pattern_parts, index + 1, exclude_patterns, is_wildcard, callback)
       elseif stat and stat.type == "file" then
          local reached_file_depth, i = M.array_any(pattern_parts, function(_, parts) return index >= #parts end)
          if reached_file_depth then
-            local extensions = parse_extensions_from_pattern(pattern_parts[i][#pattern_parts[i]])
-            if has_extension(entry, extensions) then
+            -- Check if file matches pattern, including concrete directory names
+            -- i.e. ./**/server/*.go should match ./home/user/project/server/main.go
+            -- therefore we walk back from the back (*.go) until we reach ** or the beginning
+            local matches = true
+            local path_parts = split_string(path, "/")
+            local j = 0
+            local dir_pattern = nil
+            local path_part = nil
+            while (not dir_pattern or dir_pattern ~= "**") and j < math.min(#pattern_parts[i], #path_parts) do
+               dir_pattern = pattern_parts[i][#pattern_parts[i]-j]
+               path_part = path_parts[#path_parts-j]
+               matches = matches and M.match_file_to_pattern(path_part, dir_pattern)
+               j = j + 1
+            end
+            if matches then
                if DEBUG then
                   print("Adding:", path)
                end
@@ -183,7 +236,7 @@ M.find_files_with_wildcard = function(root, path_patterns, exclude_patterns, cal
       if pattern:sub(1, 2) == "./" then
          pattern = pattern:sub(3)
       end
-      exclude_patterns[i] = replace_glob_wildcards(pattern)
+      exclude_patterns[i] = M.replace_glob_wildcards(pattern)
    end
 
    if DEBUG then
