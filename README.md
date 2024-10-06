@@ -65,6 +65,10 @@ The config file is called `.hashtags.config.json` and contains 2 arrays:
 The following default options will be set if you don't override them:
 
 ```lua
+local sel_bg = vim.api.nvim_get_hl(0, { name = 'PmenuSel' }).bg
+local title_fg = vim.api.nvim_get_hl(0, { name = 'Title' }).fg
+local statusline_fg = vim.api.nvim_get_hl(0, { name = 'StatusLine' }).fg
+
 {
    context_top = 1,
    context_bottom = 2,
