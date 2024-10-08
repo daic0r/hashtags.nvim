@@ -1,7 +1,7 @@
 # hashtags.nvim
 
 > [!WARNING]
-> DISCLAIMER: this is a work in progress and might very well be buggy!
+> DISCLAIMER: this is new and might very well be buggy!
 > 
 > Contributions welcome :-)
 
@@ -33,7 +33,7 @@ This will set up the plugin with the default options. See below for more informa
 
 ## Documentation:
 
-First a definition: a _#hashtag_ is a `#` followed by any number of uppercase letters.
+First a definition: a _#hashtag_ is a `#` followed by any number of uppercase letters and underscores.
 
 In the configuration above you can see the 4 user-facing functions `setup(opts)`, `nav_next`, `nav_prev` and `show_ui`.
 All of them require the cursor to be on a hashtag for context.
