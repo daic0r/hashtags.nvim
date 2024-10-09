@@ -160,7 +160,7 @@ local function traverse_dir(dir, pattern_parts, index, exclude_patterns, inside_
 
    local handle = vim.loop.fs_scandir(dir)
    if not handle then
-      print("Error scanning directory:", dir)
+      vim.notify("Error scanning directory: " .. dir, vim.log.levels.ERROR)
       return
    end
 

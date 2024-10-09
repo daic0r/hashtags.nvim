@@ -446,8 +446,6 @@ function M.index_files(path_patterns, exclusions)
          local file_entry = M.data_by_file[truncated_filename]
          if file_entry and file_entry.lastModifiedTime == stat.mtime.nsec then
             goto continue
-         elseif file_entry then
-            print("File has been modified, reindexing: " .. filename)
          end
 
          --- Get information from this single file...
