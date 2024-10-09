@@ -234,7 +234,7 @@ local function on_buf_delete(file, bufnr)
    for _,entry in ipairs(file_entry.hashtags) do
       entry.mark_id = nil
       for _,entry2 in ipairs(M.data[entry.hashtag]) do
-         if entry2.file == file and entry2.row == entry.row and entry2.from == entry.from then
+         if entry2.file == file then
             entry2.bufnr = nil
             entry2.mark_id = nil
             if DEBUG then
