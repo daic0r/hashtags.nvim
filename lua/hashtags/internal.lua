@@ -3,8 +3,9 @@ local util = require('hashtags.util')
 -- local await = async.await
 -- local Job = require('plenary.job')
 
+local DEBUG = false
+
 local globals = require('hashtags.globals')
-local shown = false
 
 --- @class DataEntry
 --- @field file string File that contains the hashtag
@@ -193,7 +194,8 @@ end
 
 --- Initialize the autocommands:
 --- 1) BufReadPost: When a new file is opened, create extmarks for the hashtags
---- 2) TextChanged, TextChangedI: When a file is being edited, check for new hashtags
+--- 2) BufDelete: When a file is closed, remove the corresponding data
+--- 3) TextChanged, TextChangedI: When a file is being edited, check for new hashtags
 local function init_autocommands()
    -- #TODO: new file is created, add it to the index
    -- #TODO: file is being edited, check for new hashtags
@@ -223,6 +225,34 @@ local function init_autocommands()
                hashtag_entry[1].bufnr = ev.buf
             end
          end)
+      end
+   })
+   vim.api.nvim_create_autocmd({'BufDelete'}, {
+      group = globals.HASHTAGS_AUGROUP,
+      --- @type fun(ev: EventArgs)
+      callback = function(ev)
+         local file_entry = M.data_by_file[ev.file]
+         if not file_entry then
+            return
+         end
+
+         file_entry.bufnr = nil
+         file_entry.next_extmark_id = 0
+         for _,entry in ipairs(file_entry.hashtags) do
+            entry.mark_id = nil
+            for _,entry2 in ipairs(M.data[entry.hashtag]) do
+               if entry2.file == ev.file and entry2.row == entry.row and entry2.from == entry.from then
+                  entry2.bufnr = nil
+                  entry2.mark_id = nil
+                  if DEBUG then
+                     print("Erased entry for hashtag ", entry.hashtag, " in buffer ", ev.buf)
+                  end
+               end
+            end
+         end
+         if DEBUG then
+            print("Erased buffer ", ev.buf, " from file ", ev.file)
+         end
       end
    })
    vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {
