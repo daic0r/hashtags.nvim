@@ -192,6 +192,110 @@ local function reparse_buffer(bufnr, file)
    end)
 end
 
+--- Event handler for BufReadPost
+--- @param file string
+--- @param bufnr number
+local function on_buf_read_post(file, bufnr)
+   if not M.data then
+      return
+   end
+   if not M.data_by_file[file] and not M.data_by_file[bufnr] then
+      return
+   end
+   local file_entry = M.data_by_file[file] or M.data_by_file[bufnr]
+   file_entry.bufnr = bufnr
+
+   create_extmarks(bufnr, file_entry.hashtags, function(hashtag, mark_id)
+      hashtag.mark_id = mark_id
+      file_entry.next_extmark_id = file_entry.next_extmark_id + 1
+      --
+      -- Sync with other map
+      local hashtag_entry = vim.tbl_filter(function(entry)
+         return entry.file == file and entry.row == hashtag.row and entry.from == hashtag.from
+      end, M.data[hashtag.hashtag])
+      if #hashtag_entry == 1 then
+         hashtag_entry[1].mark_id = mark_id
+         hashtag_entry[1].bufnr = bufnr
+      end
+   end)
+end
+
+--- Event handler for BufDelete
+--- @param file string
+--- @param bufnr number
+local function on_buf_delete(file, bufnr)
+   local file_entry = M.data_by_file[file]
+   if not file_entry then
+      return
+   end
+
+   file_entry.bufnr = nil
+   file_entry.next_extmark_id = 0
+   for _,entry in ipairs(file_entry.hashtags) do
+      entry.mark_id = nil
+      for _,entry2 in ipairs(M.data[entry.hashtag]) do
+         if entry2.file == file and entry2.row == entry.row and entry2.from == entry.from then
+            entry2.bufnr = nil
+            entry2.mark_id = nil
+            if DEBUG then
+               print("Erased entry for hashtag ", entry.hashtag, " in buffer ", bufnr)
+            end
+         end
+      end
+   end
+   if DEBUG then
+      print("Erased buffer ", bufnr, " from file ", file)
+   end
+end
+
+--- Event handler for TextChanged, TextChangedI
+--- @param file string
+--- @param bufnr number
+local function on_text_changed(file, bufnr)
+   local buf_timer = nil
+   if M.options.refresh_timeout then
+      buf_timer = buffer_timers[bufnr]
+      if not buf_timer then
+         buffer_timers[bufnr] = vim.loop.new_timer()
+         buf_timer = buffer_timers[bufnr]
+      end
+      if buf_timer:is_active() then
+         buf_timer:stop()
+      end
+   end
+
+   -- For some reason here the absolute path is used,
+   -- whereas in the other events it isn't
+   file = M.truncate_file_path(file)
+
+   --- @type DataByFileEntry
+   local file_entry = M.data_by_file[file]
+   if not file_entry then
+      return
+   end
+
+   assert(file_entry.size)
+   -- No timeout given -> let's update the positions at least
+   if not M.options.refresh_timeout then
+      for _, hashtag in ipairs(file_entry.hashtags) do
+         if hashtag.mark_id then
+            local ext_mark_item = vim.api.nvim_buf_get_extmark_by_id(bufnr,
+            globals.HASHTAGS_HIGHLIGHT_NS,
+            hashtag.mark_id,
+            { details = false, hl_name = false }
+            )
+            hashtag.row = ext_mark_item[1] + 1
+            hashtag.from = ext_mark_item[2] + 1
+         end
+      end
+      return
+   elseif not M.options.refresh_file_size_limit or file_entry.size <= M.options.refresh_file_size_limit then
+      buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
+         reparse_buffer(bufnr, file)
+      end))
+   end
+end
+
 --- Initialize the autocommands:
 --- 1) BufReadPost: When a new file is opened, create extmarks for the hashtags
 --- 2) BufDelete: When a file is closed, remove the corresponding data
@@ -203,104 +307,21 @@ local function init_autocommands()
       group = globals.HASHTAGS_AUGROUP,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
-         if not M.data then
-            return
-         end
-         if not M.data_by_file[ev.file] and not M.data_by_file[ev.buf] then
-            return
-         end
-         local file_entry = M.data_by_file[ev.file] or M.data_by_file[ev.buf]
-         file_entry.bufnr = ev.buf
-
-         create_extmarks(ev.buf, file_entry.hashtags, function(hashtag, mark_id)
-            hashtag.mark_id = mark_id
-            file_entry.next_extmark_id = file_entry.next_extmark_id + 1
-            --
-            -- Sync with other map
-            local hashtag_entry = vim.tbl_filter(function(entry)
-               return entry.file == ev.file and entry.row == hashtag.row and entry.from == hashtag.from
-            end, M.data[hashtag.hashtag])
-            if #hashtag_entry == 1 then
-               hashtag_entry[1].mark_id = mark_id
-               hashtag_entry[1].bufnr = ev.buf
-            end
-         end)
+        on_buf_read_post(ev.file, ev.buf)
       end
    })
    vim.api.nvim_create_autocmd({'BufDelete'}, {
       group = globals.HASHTAGS_AUGROUP,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
-         local file_entry = M.data_by_file[ev.file]
-         if not file_entry then
-            return
-         end
-
-         file_entry.bufnr = nil
-         file_entry.next_extmark_id = 0
-         for _,entry in ipairs(file_entry.hashtags) do
-            entry.mark_id = nil
-            for _,entry2 in ipairs(M.data[entry.hashtag]) do
-               if entry2.file == ev.file and entry2.row == entry.row and entry2.from == entry.from then
-                  entry2.bufnr = nil
-                  entry2.mark_id = nil
-                  if DEBUG then
-                     print("Erased entry for hashtag ", entry.hashtag, " in buffer ", ev.buf)
-                  end
-               end
-            end
-         end
-         if DEBUG then
-            print("Erased buffer ", ev.buf, " from file ", ev.file)
-         end
+         on_buf_delete(ev.file, ev.buf)
       end
    })
    vim.api.nvim_create_autocmd({'TextChanged', 'TextChangedI'}, {
       group = globals.HASHTAGS_AUGROUP,
       --- @type fun(ev: EventArgs)
       callback = function(ev)
-         local buf_timer = nil
-         if M.options.refresh_timeout then
-            buf_timer = buffer_timers[ev.buf]
-            if not buf_timer then
-               buffer_timers[ev.buf] = vim.loop.new_timer()
-               buf_timer = buffer_timers[ev.buf]
-            end
-            if buf_timer:is_active() then
-               buf_timer:stop()
-            end
-         end
-
-         -- For some reason here the absolute path is used,
-         -- whereas above it isn't
-         ev.file = M.truncate_file_path(ev.file)
-
-         --- @type DataByFileEntry
-         local file_entry = M.data_by_file[ev.file]
-         if not file_entry then
-            return
-         end
-
-         assert(file_entry.size)
-         -- No timeout given -> let's update the positions at least
-         if not M.options.refresh_timeout then
-            for _, hashtag in ipairs(file_entry.hashtags) do
-               if hashtag.mark_id then
-                  local ext_mark_item = vim.api.nvim_buf_get_extmark_by_id(ev.buf,
-                  globals.HASHTAGS_HIGHLIGHT_NS,
-                  hashtag.mark_id,
-                  { details = false, hl_name = false }
-                  )
-                  hashtag.row = ext_mark_item[1] + 1
-                  hashtag.from = ext_mark_item[2] + 1
-               end
-            end
-            return
-         elseif not M.options.refresh_file_size_limit or file_entry.size <= M.options.refresh_file_size_limit then
-            buf_timer:start(M.options.refresh_timeout, 0, vim.schedule_wrap(function()
-               reparse_buffer(ev.buf, ev.file)
-            end))
-         end
+         on_text_changed(ev.file, ev.buf)
       end
    })
 end
