@@ -567,7 +567,7 @@ M.init = function(opts)
    assert(opts.refresh_file_size_limit)
    M.root = M.find_root_dir(vim.fn.getcwd())
    if not M.root then
-      return
+      return false
    end
    M.options = opts
    local data = util.load_from_json(M.get_index_file())
@@ -579,6 +579,8 @@ M.init = function(opts)
    M.index_files(M.workspace_config.include, M.workspace_config.exclude)
    init_autocommands()
    init_commands()
+
+   return true
 end
 
 return M

@@ -45,8 +45,10 @@ M.setup = function(opts)
    if opts then
       options = vim.tbl_deep_extend("force", options, opts)
    end
+   if not internal.init(options) then
+      return
+   end
    ui.init(options)
-   internal.init(options)
 end
 
 return M
