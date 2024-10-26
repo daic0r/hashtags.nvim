@@ -179,6 +179,9 @@ local function reparse_buffer(bufnr, file)
       file = M.truncate_file_path(file)
    end
    local file_entry = M.data_by_file[file]
+   if not file_entry then
+      return
+   end
 
    vim.api.nvim_buf_clear_namespace(bufnr, globals.HASHTAGS_HIGHLIGHT_NS, 0, -1)
 
