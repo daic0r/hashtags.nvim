@@ -537,6 +537,8 @@ M.nav = function(hashtag, direction)
    local current = vim.api.nvim_get_current_buf()
    local this_file = M.truncate_file_path(vim.api.nvim_buf_get_name(current))
    local cursor_pos = vim.api.nvim_win_get_cursor(0)
+   -- Convert to 1-based
+   cursor_pos[2] = cursor_pos[2] + 1
    local next_idx = 0
 
    for idx, entry in ipairs(tag_entry) do
@@ -558,7 +560,7 @@ M.nav = function(hashtag, direction)
       else
          vim.api.nvim_command('e ' .. next.file)
       end
-      vim.api.nvim_win_set_cursor(0, {next.row, next.from})
+      vim.api.nvim_win_set_cursor(0, {next.row, next.from-1})
    end
 end
 
